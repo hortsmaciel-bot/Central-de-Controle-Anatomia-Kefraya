@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
     --ink:#16211c;
@@ -513,6 +514,13 @@
   .confirm-message{ font-size:14px; line-height:1.55; color:var(--ink); margin:0 0 20px; white-space:pre-line; }
   .confirm-actions{ display:flex; justify-content:flex-end; gap:8px; }
   .btn.primary.danger{ background:var(--red); color:#fff; }
+  .pw-input{
+    width:100%; border:1px solid var(--border); border-radius:8px; padding:9px 10px;
+    font-size:14px; background:var(--canvas); color:var(--ink); font-family:inherit; margin-top:2px;
+  }
+  .pw-input:focus{ border-color:var(--accent, var(--green)); background:var(--surface); }
+  .sync-status.clickable{ cursor:pointer; }
+  .sync-status.clickable:hover{ filter:brightness(1.15); }
   .modal-head{ display:flex; align-items:center; gap:10px; padding:18px 20px 6px; }
   .modal-head input.title-input{
     flex:1; font-family:var(--font-display); font-size:18px; font-weight:600;
@@ -748,7 +756,7 @@
     <h1>Central de Controle Operacional</h1>
     <p>Anatomia · Grupo Kefraya</p>
   </div>
-  <div id="syncStatus" class="sync-status" title="Verificando backup…"><span>◌</span> Verificando backup…</div>
+  <div id="syncStatus" class="sync-status" title="Verificando nuvem…"><span>◌</span> Verificando nuvem…</div>
   <div class="top-actions">
     <button class="icon-btn" id="themeToggle" title="Alternar tema" aria-label="Alternar tema claro/escuro">◐</button>
     <div class="top-menu-wrap">
@@ -862,6 +870,18 @@
   </div>
 </div>
 
+<div class="overlay" id="pwOverlay">
+  <div class="confirm-modal">
+    <p class="confirm-message">Digite a senha da equipe para habilitar a edição e publicar suas alterações para todo mundo que tiver o link.</p>
+    <input type="password" id="pwInput" class="pw-input" placeholder="Senha da equipe" autocomplete="off">
+    <p class="confirm-message" id="pwError" style="display:none;color:var(--red);font-size:12.5px;margin:8px 0 0;"></p>
+    <div class="confirm-actions" style="margin-top:16px;">
+      <button class="btn ghost small" id="pwCancelBtn">Cancelar</button>
+      <button class="btn primary small" id="pwOkBtn">Desbloquear</button>
+    </div>
+  </div>
+</div>
+
 <div id="toastHost"></div>
 
 <script>
@@ -873,6 +893,16 @@
 
 const STORAGE_KEY = 'kefraya_anatomia_control_v1';
 const TIP_DISMISS_KEY = 'kefraya_anatomia_tip_dismissed_v1';
+
+/* ---------- Config: banco compartilhado (Supabase) ----------
+   Preencha estes dois valores com os do SEU projeto Supabase (gratuito) —
+   veja o passo a passo no README.md desta pasta. Sem eles preenchidos,
+   o app continua funcionando normalmente, só que cada navegador guarda
+   os dados sozinho, sem compartilhar com mais ninguém. */
+const SUPABASE_URL = 'COLE_AQUI_A_URL_DO_SEU_PROJETO_SUPABASE';
+const SUPABASE_ANON_KEY = 'COLE_AQUI_A_CHAVE_ANON_PUBLICA_DO_SUPABASE';
+const BOARD_ROW_ID = 'kefraya-anatomia';
+const EDIT_PASSWORD_KEY = 'kefraya_edit_password_v1';
 
 /* ---------- Section configuration ---------- */
 const SECTIONS = [
@@ -1123,56 +1153,115 @@ function normalizeState(data){
   return data;
 }
 
-/* ---------- Cloud sync (Claude db capability, private per-account) ----------
-   Local storage stays as a fast, always-available cache. On top of it we
-   keep a durable copy tied to the person's Claude account, under their own
-   private subtree, so the data survives even if the browser clears its
-   storage (which is what caused a real data-loss incident once). */
-let cloudDb = null;
-let cloudUserId = null;
-let cloudEnabled = false;
+/* ---------- Cloud sync (quadro compartilhado via Supabase) ----------
+   O quadro inteiro fica guardado numa única linha de uma tabela no
+   Supabase. Qualquer pessoa com o link consegue LER esse registro (o
+   quadro é público para visualização). Para GRAVAR é preciso informar a
+   senha da equipe — a conferência da senha acontece dentro do banco
+   (função protegida no Postgres), então nem abrindo o código-fonte da
+   página dá para escrever sem a senha certa. Enquanto ninguém desbloqueia
+   a edição neste navegador, as alterações continuam sendo salvas
+   normalmente aqui (localStorage) — nada é perdido — só não são
+   publicadas para os outros até alguém entrar com a senha. */
+let sb = null;
+let supabaseConfigured = false;
+let editUnlocked = false;
+let editPassword = null;
 let cloudSaveTimer = null;
-let cloudSyncStatus = 'checking'; // 'checking' | 'synced' | 'syncing' | 'local-only' | 'error'
+let cloudSyncStatus = 'checking'; // 'checking'|'synced'|'syncing'|'locked'|'local-only'|'error'
+let realtimeChannel = null;
+let suppressNextRealtime = false;
 
-async function initCloud(){
+function initSupabase(){
   try{
-    if(!(window.claude && typeof window.claude.use === 'function')) return false;
-    const userNs = await window.claude.use('user');
-    if(!userNs) return false;
-    const myId = await userNs.id();
-    if(!myId) return false;
-    const dbNs = await window.claude.use('db');
-    if(!dbNs) return false;
-    cloudUserId = myId;
-    cloudDb = dbNs;
-    cloudEnabled = true;
+    if(!window.supabase || typeof window.supabase.createClient !== 'function') return false;
+    if(!SUPABASE_URL || !SUPABASE_ANON_KEY ||
+       SUPABASE_URL.indexOf('COLE_AQUI') !== -1 || SUPABASE_ANON_KEY.indexOf('COLE_AQUI') !== -1) return false;
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseConfigured = true;
     return true;
-  }catch(e){ console.warn('Inicialização da nuvem falhou', e); return false; }
-}
-
-function cloudDocRef(){
-  return cloudDb.doc('data/users/' + cloudUserId + '/state');
+  }catch(e){ console.warn('Inicialização do Supabase falhou', e); return false; }
 }
 
 function setSyncStatus(status){
   cloudSyncStatus = status;
   const el = document.getElementById('syncStatus');
-  if(!el) return;
-  const map = {
-    checking: { icon:'◌', text:'Verificando backup…', cls:'' },
-    synced: { icon:'☁', text:'Salvo na nuvem', cls:'ok' },
-    syncing: { icon:'◌', text:'Sincronizando…', cls:'' },
-    'local-only': { icon:'⚠', text:'Só neste navegador', cls:'warn' },
-    error: { icon:'⚠', text:'Falha ao sincronizar', cls:'warn' },
-  };
-  const m = map[status] || map.checking;
-  el.className = 'sync-status ' + m.cls;
-  el.innerHTML = `<span>${m.icon}</span> ${m.text}`;
-  el.title = status === 'local-only'
-    ? 'Backup na nuvem indisponível nesta visualização — os dados continuam salvos só neste navegador.'
-    : status === 'error'
-    ? 'A última tentativa de backup na nuvem falhou. Seus dados continuam salvos neste navegador; tentaremos de novo automaticamente.'
-    : 'Seus dados ficam salvos neste navegador e também em backup na nuvem, vinculado à sua conta.';
+  if(el){
+    const map = {
+      checking: { icon:'◌', text:'Verificando nuvem…', cls:'' },
+      synced: { icon:'☁', text:'Publicado na nuvem', cls:'ok' },
+      syncing: { icon:'◌', text:'Publicando…', cls:'' },
+      locked: { icon:'🔒', text:'Somente leitura', cls:'warn' },
+      'local-only': { icon:'⚠', text:'Só neste navegador', cls:'warn' },
+      error: { icon:'⚠', text:'Falha ao publicar', cls:'warn' },
+    };
+    const m = map[status] || map.checking;
+    el.className = 'sync-status ' + m.cls + (supabaseConfigured ? ' clickable' : '');
+    el.innerHTML = `<span>${m.icon}</span> ${m.text}`;
+    el.title = !supabaseConfigured
+      ? 'Este site ainda não foi ligado a um banco compartilhado — veja o README.md para configurar. Por enquanto, os dados ficam só neste navegador.'
+      : status === 'locked'
+      ? 'Você está vendo o quadro compartilhado, mas suas alterações não estão sendo publicadas. Clique para desbloquear com a senha da equipe.'
+      : status === 'local-only'
+      ? 'Backup na nuvem indisponível no momento — os dados continuam salvos só neste navegador.'
+      : status === 'error'
+      ? 'A última tentativa de publicar falhou. Suas alterações continuam salvas neste navegador; tentaremos de novo automaticamente.'
+      : status === 'synced'
+      ? 'Suas alterações estão publicadas no quadro compartilhado — qualquer pessoa com o link vê a mesma coisa. Clique para bloquear a edição neste navegador.'
+      : 'Sincronizando com o quadro compartilhado…';
+  }
+  const syncBtn = document.getElementById('btnSyncNow');
+  if(syncBtn) syncBtn.textContent = editUnlocked ? '☁ Publicar agora' : '🔓 Desbloquear edição…';
+}
+
+async function verifyStoredPassword(){
+  const saved = localStorage.getItem(EDIT_PASSWORD_KEY);
+  if(!saved || !supabaseConfigured) return false;
+  try{
+    const { data, error } = await sb.rpc('verify_password', { p_password: saved });
+    if(error) throw error;
+    if(data === true){
+      editPassword = saved;
+      editUnlocked = true;
+      return true;
+    }
+  }catch(e){ console.warn('Falha ao verificar a senha salva', e); }
+  localStorage.removeItem(EDIT_PASSWORD_KEY);
+  editUnlocked = false;
+  editPassword = null;
+  return false;
+}
+
+function subscribeRealtime(){
+  if(!supabaseConfigured || realtimeChannel) return;
+  realtimeChannel = sb.channel('board_state_changes')
+    .on('postgres_changes',
+      { event:'UPDATE', schema:'public', table:'board_state', filter:`id=eq.${BOARD_ROW_ID}` },
+      (payload) => {
+        if(suppressNextRealtime){ suppressNextRealtime = false; return; }
+        handleRemoteUpdate(payload.new);
+      })
+    .subscribe();
+}
+
+function handleRemoteUpdate(row){
+  if(!row || !row.data || !row.data.sections) return;
+  const cardOverlayEl = document.getElementById('cardOverlay');
+  if(cardOverlayEl && cardOverlayEl.classList.contains('open')){
+    toast('O quadro foi atualizado por outra pessoa — feche este cartão para ver a versão mais recente');
+    return;
+  }
+  const remote = normalizeState(JSON.parse(JSON.stringify(row.data)));
+  remote.meta = remote.meta || {};
+  remote.meta.updatedAt = new Date(row.updated_at).getTime();
+  const localUpdated = (state.meta && state.meta.updatedAt) || 0;
+  if(remote.meta.updatedAt <= localUpdated) return;
+  state = remote;
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+  renderTabs();
+  renderMain();
+  setSyncStatus(editUnlocked ? 'synced' : 'locked');
+  toast('Quadro atualizado com as alterações mais recentes da equipe');
 }
 
 async function loadData(){
@@ -1185,20 +1274,24 @@ async function loadData(){
     }
   }catch(e){ console.warn('Falha ao carregar dados salvos localmente', e); }
 
-  const cloudReady = await initCloud();
+  const ready = initSupabase();
   let remote = null;
-  if(cloudReady){
+  if(ready){
+    await verifyStoredPassword();
     try{
-      const snap = await cloudDocRef().get();
-      if(snap.exists){
-        const data = snap.data();
-        if(data && data.sections) remote = normalizeState(JSON.parse(JSON.stringify(data)));
+      const { data, error } = await sb.from('board_state').select('data,updated_at').eq('id', BOARD_ROW_ID).single();
+      if(error) throw error;
+      if(data && data.data && data.data.sections){
+        remote = normalizeState(JSON.parse(JSON.stringify(data.data)));
+        remote.meta = remote.meta || {};
+        remote.meta.updatedAt = new Date(data.updated_at).getTime();
       }
-      setSyncStatus('synced');
+      setSyncStatus(editUnlocked ? 'synced' : 'locked');
     }catch(e){
-      console.warn('Falha ao carregar backup na nuvem', e);
+      console.warn('Falha ao carregar o quadro compartilhado', e);
       setSyncStatus('error');
     }
+    subscribeRealtime();
   } else {
     setSyncStatus('local-only');
   }
@@ -1227,35 +1320,112 @@ function saveData(silent){
 }
 
 function scheduleCloudSave(){
-  if(!cloudEnabled) return;
+  if(!supabaseConfigured) return;
+  if(!editUnlocked){ setSyncStatus('locked'); return; }
   if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
   setSyncStatus('syncing');
   cloudSaveTimer = setTimeout(doCloudSave, 1200);
 }
 
 async function doCloudSave(){
-  if(!cloudEnabled) return;
+  if(!supabaseConfigured || !editUnlocked) return;
   try{
     const snapshot = JSON.parse(JSON.stringify(state));
-    await cloudDocRef().set(snapshot);
+    const { data, error } = await sb.rpc('update_board_state', { p_data: snapshot, p_password: editPassword });
+    if(error) throw error;
+    if(data){ state.meta.updatedAt = new Date(data).getTime(); }
+    suppressNextRealtime = true;
     setSyncStatus('synced');
   }catch(e){
-    console.warn('Falha ao salvar backup na nuvem', e);
+    console.warn('Falha ao publicar no quadro compartilhado', e);
+    if(String((e && e.message) || '').toLowerCase().indexOf('senha') !== -1){
+      editUnlocked = false;
+      editPassword = null;
+      localStorage.removeItem(EDIT_PASSWORD_KEY);
+      setSyncStatus('locked');
+      toast('A senha da equipe mudou — desbloqueie novamente para continuar publicando', true);
+      return;
+    }
     setSyncStatus('error');
-    // tenta de novo mais adiante, sem perder o próximo save do usuário
+    // tenta de novo mais adiante, sem perder a próxima alteração do usuário
     cloudSaveTimer = setTimeout(doCloudSave, 8000);
   }
 }
 
 async function forceSyncNow(){
-  if(!cloudEnabled){
-    toast('Backup na nuvem não está disponível nesta visualização', true);
+  if(!supabaseConfigured){
+    toast('Este site ainda não está ligado a um banco compartilhado — veja o README.md', true);
     return;
+  }
+  if(!editUnlocked){
+    const ok = await openPasswordPrompt();
+    if(!ok) return;
   }
   if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
   setSyncStatus('syncing');
   await doCloudSave();
-  toast('Sincronizado com a nuvem');
+  if(cloudSyncStatus === 'synced') toast('Publicado no quadro compartilhado');
+}
+
+/* ---------- Senha da equipe (modal próprio, sem depender de window.prompt) ---------- */
+let __pwResolver = null;
+function openPasswordPrompt(){
+  const overlay = document.getElementById('pwOverlay');
+  const input = document.getElementById('pwInput');
+  const errEl = document.getElementById('pwError');
+  input.value = '';
+  errEl.style.display = 'none';
+  overlay.classList.add('open');
+  setTimeout(() => input.focus(), 50);
+  return new Promise((resolve) => { __pwResolver = resolve; });
+}
+function closePasswordPrompt(result){
+  const overlay = document.getElementById('pwOverlay');
+  if(!overlay.classList.contains('open')) return;
+  overlay.classList.remove('open');
+  if(__pwResolver){ const r = __pwResolver; __pwResolver = null; r(result); }
+}
+async function attemptUnlock(){
+  const input = document.getElementById('pwInput');
+  const errEl = document.getElementById('pwError');
+  const okBtn = document.getElementById('pwOkBtn');
+  const candidate = input.value;
+  if(!candidate){ errEl.textContent = 'Digite a senha.'; errEl.style.display = 'block'; return; }
+  if(!supabaseConfigured){ errEl.textContent = 'Banco compartilhado não configurado neste site.'; errEl.style.display = 'block'; return; }
+  okBtn.disabled = true;
+  okBtn.textContent = 'Verificando…';
+  try{
+    const { data, error } = await sb.rpc('verify_password', { p_password: candidate });
+    if(error) throw error;
+    if(data === true){
+      editPassword = candidate;
+      editUnlocked = true;
+      localStorage.setItem(EDIT_PASSWORD_KEY, candidate);
+      toast('Edição desbloqueada — suas alterações agora são publicadas para todos');
+      closePasswordPrompt(true);
+      if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
+      setSyncStatus('synced');
+    } else {
+      errEl.textContent = 'Senha incorreta.';
+      errEl.style.display = 'block';
+    }
+  }catch(e){
+    console.warn('Falha ao verificar a senha', e);
+    errEl.textContent = 'Não foi possível verificar a senha agora. Tente novamente.';
+    errEl.style.display = 'block';
+  }finally{
+    okBtn.disabled = false;
+    okBtn.textContent = 'Desbloquear';
+  }
+}
+async function lockEditingAgain(){
+  const ok = await customConfirm('Bloquear a edição neste navegador? Você continuará vendo o quadro compartilhado, mas novas alterações feitas aqui não serão publicadas até desbloquear de novo com a senha.', { confirmLabel:'Bloquear', danger:false });
+  if(!ok) return;
+  editUnlocked = false;
+  editPassword = null;
+  localStorage.removeItem(EDIT_PASSWORD_KEY);
+  setSyncStatus('locked');
+  toast('Edição bloqueada neste navegador');
 }
 
 /* ---------- Toast ---------- */
@@ -3417,6 +3587,18 @@ async function init(){
   document.getElementById('btnExport').addEventListener('click', () => { menu.classList.remove('open'); exportBackup(); });
   document.getElementById('btnImport').addEventListener('click', () => { menu.classList.remove('open'); document.getElementById('importFileInput').click(); });
   document.getElementById('btnSyncNow').addEventListener('click', () => { menu.classList.remove('open'); forceSyncNow(); });
+  document.getElementById('syncStatus').addEventListener('click', () => {
+    if(!supabaseConfigured) return;
+    if(editUnlocked) lockEditingAgain(); else openPasswordPrompt();
+  });
+  document.getElementById('pwOkBtn').addEventListener('click', attemptUnlock);
+  document.getElementById('pwCancelBtn').addEventListener('click', () => closePasswordPrompt(false));
+  document.getElementById('pwOverlay').addEventListener('click', (e) => {
+    if(e.target.id === 'pwOverlay') closePasswordPrompt(false);
+  });
+  document.getElementById('pwInput').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); attemptUnlock(); }
+  });
   document.getElementById('importFileInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if(file) importBackup(file);
@@ -3457,7 +3639,8 @@ async function init(){
   });
   document.addEventListener('keydown', (e) => {
     if(e.key !== 'Escape') return;
-    if(document.getElementById('confirmOverlay').classList.contains('open')) closeConfirm(false);
+    if(document.getElementById('pwOverlay').classList.contains('open')) closePasswordPrompt(false);
+    else if(document.getElementById('confirmOverlay').classList.contains('open')) closeConfirm(false);
     else if(document.getElementById('cardOverlay').classList.contains('open')) closeCardModal();
   });
 

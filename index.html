@@ -629,6 +629,24 @@
   }
   .modal-foot .left-actions, .modal-foot .right-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 
+  /* ---------- Gerenciar abas do menu ---------- */
+  .sec-row{
+    display:flex; align-items:center; gap:10px; padding:9px 10px;
+    background:var(--canvas); border:1px solid var(--border-soft); border-radius:9px; margin-bottom:7px;
+  }
+  .sec-reorder{ display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
+  .sec-arrow{
+    background:none; border:1px solid var(--border); border-radius:5px; color:var(--ink-soft);
+    font-size:9px; line-height:1; padding:3px 5px; cursor:pointer;
+  }
+  .sec-arrow:hover:not(:disabled){ background:var(--surface-2); border-color:var(--accent); }
+  .sec-arrow:disabled{ opacity:.3; cursor:default; }
+  .sec-info{ flex:1; display:flex; align-items:center; gap:8px; min-width:0; }
+  .sec-icon{ flex-shrink:0; font-size:15px; }
+  .sec-label{ font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sec-actions{ display:flex; gap:6px; flex-shrink:0; }
+  .sec-row-edit{ flex-direction:column; align-items:stretch; gap:12px; padding:14px 12px; border-color:var(--accent); }
+  .sec-edit-actions{ display:flex; justify-content:flex-end; gap:8px; }
   /* ---------- Toast ---------- */
   #toastHost{ position:fixed; bottom:18px; right:18px; display:flex; flex-direction:column; gap:8px; z-index:200; }
   .toast{
@@ -816,6 +834,8 @@
       <button class="icon-btn" id="menuToggle" title="Mais opções" aria-label="Mais opções">⋯</button>
       <div class="top-menu" id="topMenu">
         <div class="top-menu-user" id="loggedInAsRow"></div>
+        <button id="btnManageSections" title="Adicione, edite, reordene ou remova as abas de quadros do cabeçalho.">⚙️ Gerenciar abas do menu</button>
+        <hr>
         <button id="btnSyncNow" title="Força uma sincronização imediata com o backup na nuvem.">☁ Sincronizar agora</button>
         <hr>
         <button id="btnExport" title="Baixa um arquivo .json com todo o texto dos quadros (títulos, datas, checklists, links de anexos). Não inclui arquivos em si.">⭳ Exportar backup dos dados (.json)</button>
@@ -918,6 +938,27 @@
   </div>
 </div>
 
+<div class="overlay" id="sectionsOverlay">
+  <div class="modal" id="sectionsModal" style="max-width:640px;">
+    <div class="modal-head">
+      <div style="flex:1;">
+        <h3 style="font-family:var(--font-display); font-size:17px; margin:0; color:var(--ink);">Gerenciar abas do menu</h3>
+        <p class="field-help" style="margin:6px 0 0;">Adicione, edite, reordene ou remova as abas de quadros do cabeçalho. As abas "Visão geral", "Retirada de Peças" e "Relatórios" são fixas e não aparecem aqui.</p>
+      </div>
+      <button class="modal-close" id="sectionsModalCloseBtn" aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="sectionsList"></div>
+      <button class="btn ghost small" id="addSectionBtn" type="button" style="align-self:flex-start;">+ Adicionar aba</button>
+    </div>
+    <div class="modal-foot" style="justify-content:flex-end;">
+      <div class="right-actions">
+        <button class="btn primary small" id="sectionsDoneBtn">Concluído</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="confirmOverlay">
   <div class="confirm-modal" id="confirmModal">
     <p class="confirm-message" id="confirmMessage"></p>
@@ -950,7 +991,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_gGAqmyT2giQCpojrEvRj4A_vEocvh2u';
 const BOARD_ROW_ID = 'kefraya-anatomia';
 
 /* ---------- Section configuration ---------- */
-const SECTIONS = [
+const DEFAULT_SECTIONS = [
   { id:'bh',           label:'ITC Belo Horizonte',        short:'BH',  icon:'🏥', dateMode:'range',
     columns:[ {id:'andamento', label:'Em andamento'}, {id:'concluidas', label:'Concluídas'} ] },
   { id:'jds',          label:'ITC Jardins',                short:'JDS', icon:'🏥', dateMode:'range',
@@ -970,11 +1011,45 @@ const SECTIONS = [
   { id:'cremacoes',    label:'Cremações',                  short:'CR',  icon:'🔥', dateMode:'single',
     columns:[ {id:'pendentes', label:'Pendentes'}, {id:'concluidas', label:'Concluídas'} ], dateLabel:['','Data da cremação'] },
 ];
-const SECTION_MAP = Object.fromEntries(SECTIONS.map(s => [s.id, s]));
+// Modelo de fábrica: usado só para popular uma instalação nova (seedData) ou
+// para migrar dados salvos antes desta funcionalidade existir. Depois disso,
+// a lista de abas que manda é sempre state.sectionsConfig (editável pela
+// pessoa em "⋯" → "Gerenciar abas do menu"), copiada para dentro de SECTIONS.
+function cloneDefaultSections(){
+  return JSON.parse(JSON.stringify(DEFAULT_SECTIONS));
+}
+let SECTIONS = cloneDefaultSections();
+let SECTION_MAP = Object.fromEntries(SECTIONS.map(s => [s.id, s]));
 const DONE_COLUMNS = new Set(['concluidas','concluidos']);
 const RETIRADAS_TAB = { id:'retiradas', label:'Retirada de Peças', short:'RET', icon:'🧊' };
 const RELATORIOS_TAB = { id:'relatorios', label:'Relatórios', short:'REL', icon:'📄' };
 const UNIT_REPORT_LABELS = { bh:'BELO HORIZONTE', jds:'JARDINS', bc:'BALNEÁRIO CAMBORIÚ', lapidare:'SÃO PAULO (LAPIDARE)' };
+const RESERVED_TAB_IDS = new Set(['dashboard','retiradas','relatorios']);
+
+// Gera um id novo e único (ex.: "itc-curitiba") a partir do nome digitado
+// pela pessoa, para uma aba criada em "Gerenciar abas do menu".
+function slugifySectionId(label){
+  let base = String(label || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if(!base) base = 'aba';
+  const existing = new Set((SECTIONS || []).map(s => s.id));
+  let id = base, n = 2;
+  while(RESERVED_TAB_IDS.has(id) || existing.has(id)){ id = base + '-' + n; n++; }
+  return id;
+}
+
+// Aponta SECTIONS/SECTION_MAP para a lista de abas guardada em
+// state.sectionsConfig (mesma referência — editar o array em memória já
+// reflete nos dois). Chamar sempre depois de trocar `state` por inteiro
+// (carregamento, atualização remota, restaurar exemplo, apagar tudo).
+function rebuildSectionsRuntime(){
+  if(state && (!Array.isArray(state.sectionsConfig) || !state.sectionsConfig.length)){
+    state.sectionsConfig = cloneDefaultSections();
+  }
+  SECTIONS = state ? state.sectionsConfig : cloneDefaultSections();
+  SECTION_MAP = Object.fromEntries(SECTIONS.map(s => [s.id, s]));
+}
 
 /* ---------- Utilities ---------- */
 function uid(){ return 'c' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
@@ -1012,8 +1087,8 @@ function mkCard(opts){
 
 /* ---------- Seed data (transcrito do quadro anterior, como ponto de partida) ---------- */
 function seedData(){
-  const data = { sections: {}, meta: { seededAt: Date.now() }, retiradas: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [] }, reportDrafts: { utilizacao: null, termo: null }, reportUiType: 'utilizacao' };
-  for(const s of SECTIONS){
+  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [] }, reportDrafts: { utilizacao: null, termo: null }, reportUiType: 'utilizacao' };
+  for(const s of DEFAULT_SECTIONS){
     data.sections[s.id] = {};
     for(const c of s.columns) data.sections[s.id][c.id] = [];
   }
@@ -1163,6 +1238,40 @@ function normalizeAttachments(list){
   });
 }
 function normalizeState(data){
+  if(!Array.isArray(data.sectionsConfig) || !data.sectionsConfig.length){
+    // dado salvo antes desta funcionalidade existir (ou vazio) — migra para
+    // as 9 abas padrão, preservando os ids originais (e portanto os cartões
+    // já guardados em data.sections).
+    data.sectionsConfig = cloneDefaultSections();
+  } else {
+    // saneamento leve: mantém o id de cada aba (é a chave dos cartões dela),
+    // só preenche o que estiver faltando.
+    data.sectionsConfig = data.sectionsConfig
+      .filter(s => s && typeof s.id === 'string' && s.id && !RESERVED_TAB_IDS.has(s.id))
+      .map(s => ({
+        id: s.id,
+        label: (s.label || s.id).toString(),
+        short: (s.short || s.label || s.id).toString().slice(0, 4),
+        icon: s.icon || '🗂️',
+        dateMode: ['none','single','range'].includes(s.dateMode) ? s.dateMode : 'range',
+        ...(Array.isArray(s.dateLabel) ? { dateLabel: s.dateLabel } : {}),
+        columns: (Array.isArray(s.columns) && s.columns.length)
+          ? s.columns.slice(0, 2).map((c, i) => ({
+              id: (c && c.id) || (i === 0 ? 'andamento' : 'concluidas'),
+              label: (c && c.label) || (i === 0 ? 'Em andamento' : 'Concluídas'),
+            }))
+          : [ {id:'andamento', label:'Em andamento'}, {id:'concluidas', label:'Concluídas'} ],
+      }));
+    if(!data.sectionsConfig.length) data.sectionsConfig = cloneDefaultSections();
+  }
+  data.sections = data.sections || {};
+  for(const s of data.sectionsConfig){
+    data.sections[s.id] = data.sections[s.id] || {};
+    for(const c of s.columns){
+      if(!Array.isArray(data.sections[s.id][c.id])) data.sections[s.id][c.id] = [];
+    }
+  }
+
   for(const secId of Object.keys(data.sections || {})){
     const sec = data.sections[secId];
     for(const colId of Object.keys(sec)){
@@ -1279,6 +1388,7 @@ function handleRemoteUpdate(row){
   const localUpdated = (state.meta && state.meta.updatedAt) || 0;
   if(remote.meta.updatedAt <= localUpdated) return;
   state = remote;
+  rebuildSectionsRuntime();
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
   renderTabs();
   renderMain();
@@ -1504,6 +1614,202 @@ function closeConfirm(result){
   }
 }
 
+
+/* ---------- Gerenciar abas do menu (quadros dinâmicos) ----------
+   As abas de quadro (ITC Belo Horizonte, Transportes, etc.) deixaram de
+   ser uma lista fixa no código: agora moram em state.sectionsConfig,
+   editável por aqui, sincronizada na nuvem como o resto do quadro. As
+   abas "Visão geral", "Retirada de Peças" e "Relatórios" continuam fixas
+   — têm telas próprias, não são quadros genéricos. */
+let sectionsEditingId = null; // id da aba em edição, '__new__' para uma aba nova, ou null
+
+function openSectionsModal(){
+  sectionsEditingId = null;
+  renderSectionsList();
+  document.getElementById('sectionsOverlay').classList.add('open');
+}
+function closeSectionsModal(){
+  document.getElementById('sectionsOverlay').classList.remove('open');
+  sectionsEditingId = null;
+}
+
+function sectionViewRowHtml(s, idx, total){
+  return `
+    <div class="sec-row" data-id="${escapeHtml(s.id)}">
+      <div class="sec-reorder">
+        <button class="sec-arrow" data-up="${escapeHtml(s.id)}" ${idx===0?'disabled':''} aria-label="Mover para cima" title="Mover para cima">▲</button>
+        <button class="sec-arrow" data-down="${escapeHtml(s.id)}" ${idx===total-1?'disabled':''} aria-label="Mover para baixo" title="Mover para baixo">▼</button>
+      </div>
+      <div class="sec-info">
+        <span class="sec-icon">${escapeHtml(s.icon || '🗂️')}</span>
+        <span class="sec-label">${escapeHtml(s.label)}</span>
+      </div>
+      <div class="sec-actions">
+        <button class="btn ghost small" data-edit="${escapeHtml(s.id)}">✏️ Editar</button>
+        <button class="btn ghost small" data-del="${escapeHtml(s.id)}">✕ Remover</button>
+      </div>
+    </div>`;
+}
+
+function sectionEditRowHtml(s, isNew){
+  const col1 = (s.columns && s.columns[0] && s.columns[0].label) || 'Em andamento';
+  const col2 = (s.columns && s.columns[1] && s.columns[1].label) || 'Concluídas';
+  const dateMode = s.dateMode || 'range';
+  const dateLabel = (s.dateLabel && s.dateLabel[1]) || '';
+  const key = isNew ? '__new__' : s.id;
+  return `
+    <div class="sec-row sec-row-edit" data-editing="${escapeHtml(key)}">
+      <div class="field-row">
+        <div class="field"><label>Ícone (emoji)</label><input type="text" id="secFIcon" value="${escapeHtml(s.icon || '')}" maxlength="4" placeholder="🏥"></div>
+        <div class="field"><label>Nome da aba</label><input type="text" id="secFLabel" value="${escapeHtml(s.label || '')}" maxlength="60" placeholder="Ex.: ITC Curitiba"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Coluna 1 (itens ativos)</label><input type="text" id="secFCol1" value="${escapeHtml(col1)}" maxlength="40"></div>
+        <div class="field"><label>Coluna 2 (itens concluídos)</label><input type="text" id="secFCol2" value="${escapeHtml(col2)}" maxlength="40"></div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Prazo dos cartões</label>
+          <select id="secFDateMode">
+            <option value="none" ${dateMode==='none'?'selected':''}>Sem data</option>
+            <option value="single" ${dateMode==='single'?'selected':''}>Uma data</option>
+            <option value="range" ${dateMode==='range'?'selected':''}>Início e fim</option>
+          </select>
+        </div>
+        <div class="field" id="secFDateLabelWrap" style="${dateMode==='single'?'':'display:none;'}">
+          <label>Rótulo da data</label>
+          <input type="text" id="secFDateLabel" value="${escapeHtml(dateLabel)}" maxlength="30" placeholder="Ex.: Data da vistoria">
+        </div>
+      </div>
+      <div class="sec-edit-actions">
+        <button class="btn ghost small" data-cancel-edit="1">Cancelar</button>
+        <button class="btn primary small" data-save="${escapeHtml(key)}">${isNew ? 'Adicionar aba' : 'Salvar'}</button>
+      </div>
+    </div>`;
+}
+
+function renderSectionsList(){
+  const host = document.getElementById('sectionsList');
+  if(!host) return;
+  const list = (state && state.sectionsConfig) || [];
+  let html = list.map((s, idx) => sectionsEditingId === s.id
+    ? sectionEditRowHtml(s, false)
+    : sectionViewRowHtml(s, idx, list.length)
+  ).join('');
+  if(sectionsEditingId === '__new__'){
+    html += sectionEditRowHtml({ icon:'', label:'', columns:[{label:'Em andamento'},{label:'Concluídas'}], dateMode:'range' }, true);
+  }
+  if(!list.length && sectionsEditingId !== '__new__'){
+    html += `<div class="empty-mini">Nenhuma aba de quadro cadastrada ainda — clique em "+ Adicionar aba" para criar a primeira.</div>`;
+  }
+  host.innerHTML = html;
+  wireSectionsListEvents();
+}
+
+function wireSectionsListEvents(){
+  const host = document.getElementById('sectionsList');
+  host.querySelectorAll('[data-up]').forEach(btn => btn.addEventListener('click', () => moveSection(btn.dataset.up, -1)));
+  host.querySelectorAll('[data-down]').forEach(btn => btn.addEventListener('click', () => moveSection(btn.dataset.down, 1)));
+  host.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => { sectionsEditingId = btn.dataset.edit; renderSectionsList(); }));
+  host.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', () => deleteSection(btn.dataset.del)));
+  host.querySelectorAll('[data-cancel-edit]').forEach(btn => btn.addEventListener('click', () => { sectionsEditingId = null; renderSectionsList(); }));
+  host.querySelectorAll('[data-save]').forEach(btn => btn.addEventListener('click', () => saveSectionEdit(btn.dataset.save)));
+  const modeSel = document.getElementById('secFDateMode');
+  if(modeSel){
+    modeSel.addEventListener('change', () => {
+      const wrap = document.getElementById('secFDateLabelWrap');
+      if(wrap) wrap.style.display = modeSel.value === 'single' ? '' : 'none';
+    });
+  }
+}
+
+function moveSection(id, dir){
+  const list = state.sectionsConfig;
+  const idx = list.findIndex(s => s.id === id);
+  const swapWith = idx + dir;
+  if(idx < 0 || swapWith < 0 || swapWith >= list.length) return;
+  const tmp = list[idx];
+  list[idx] = list[swapWith];
+  list[swapWith] = tmp;
+  rebuildSectionsRuntime();
+  saveData(true);
+  renderSectionsList();
+  renderTabs();
+}
+
+async function deleteSection(id){
+  const sec = (state.sectionsConfig || []).find(s => s.id === id);
+  if(!sec) return;
+  const ok = await customConfirm(`Remover a aba "${sec.label}"? Todos os cartões dela serão apagados permanentemente — essa ação não pode ser desfeita.`, { confirmLabel:'Remover aba' });
+  if(!ok) return;
+  state.sectionsConfig = state.sectionsConfig.filter(s => s.id !== id);
+  if(state.sections) delete state.sections[id];
+  if(sectionsEditingId === id) sectionsEditingId = null;
+  rebuildSectionsRuntime();
+  if(currentSectionId === id) currentSectionId = 'dashboard';
+  saveData(true);
+  renderSectionsList();
+  renderTabs();
+  renderMain();
+  toast('Aba removida');
+}
+
+function saveSectionEdit(key){
+  const iconInput = document.getElementById('secFIcon');
+  const labelInput = document.getElementById('secFLabel');
+  const col1Input = document.getElementById('secFCol1');
+  const col2Input = document.getElementById('secFCol2');
+  const dateModeSel = document.getElementById('secFDateMode');
+  const dateLabelInput = document.getElementById('secFDateLabel');
+
+  const icon = (iconInput.value || '').trim() || '🗂️';
+  const label = (labelInput.value || '').trim();
+  const col1 = (col1Input.value || '').trim() || 'Em andamento';
+  const col2 = (col2Input.value || '').trim() || 'Concluídas';
+  const dateMode = dateModeSel.value;
+  const dateLabelText = (dateLabelInput ? dateLabelInput.value : '').trim();
+
+  if(!label){
+    toast('Dê um nome para a aba antes de salvar', true);
+    return;
+  }
+
+  if(key === '__new__'){
+    const id = slugifySectionId(label);
+    const newSection = {
+      id, label, short: label.slice(0, 4), icon, dateMode,
+      columns: [ {id:'andamento', label:col1}, {id:'concluidas', label:col2} ],
+    };
+    if(dateMode === 'single' && dateLabelText) newSection.dateLabel = ['', dateLabelText];
+    state.sectionsConfig.push(newSection);
+    state.sections = state.sections || {};
+    state.sections[id] = { andamento: [], concluidas: [] };
+    sectionsEditingId = null;
+    rebuildSectionsRuntime();
+    saveData(true);
+    renderSectionsList();
+    renderTabs();
+    toast('Aba adicionada');
+  } else {
+    const sec = (state.sectionsConfig || []).find(s => s.id === key);
+    if(!sec) return;
+    sec.label = label;
+    sec.short = label.slice(0, 4);
+    sec.icon = icon;
+    sec.dateMode = dateMode;
+    sec.columns[0].label = col1;
+    sec.columns[1].label = col2;
+    if(dateMode === 'single' && dateLabelText) sec.dateLabel = ['', dateLabelText];
+    else delete sec.dateLabel;
+    sectionsEditingId = null;
+    rebuildSectionsRuntime();
+    saveData(true);
+    renderSectionsList();
+    renderTabs();
+    if(currentSectionId === key) renderMain();
+    toast('Aba atualizada');
+  }
+}
 /* ---------- Date badge logic ---------- */
 function dateBadgeInfo(card, sectionId, columnId){
   const isDone = DONE_COLUMNS.has(columnId);
@@ -3604,6 +3910,7 @@ async function exportTermoPDF(report, opts){
 async function init(){
   applyStoredTheme();
   state = await loadData();
+  rebuildSectionsRuntime();
   renderTabs();
   renderMain();
 
@@ -3617,7 +3924,15 @@ async function init(){
   document.getElementById('btnExport').addEventListener('click', () => { menu.classList.remove('open'); exportBackup(); });
   document.getElementById('btnImport').addEventListener('click', () => { menu.classList.remove('open'); document.getElementById('importFileInput').click(); });
   document.getElementById('btnSyncNow').addEventListener('click', () => { menu.classList.remove('open'); forceSyncNow(); });
+  document.getElementById('btnManageSections').addEventListener('click', () => { menu.classList.remove('open'); openSectionsModal(); });
   document.getElementById('btnLogout').addEventListener('click', () => { menu.classList.remove('open'); signOutAndShowLogin(); });
+
+  document.getElementById('sectionsModalCloseBtn').addEventListener('click', closeSectionsModal);
+  document.getElementById('sectionsDoneBtn').addEventListener('click', closeSectionsModal);
+  document.getElementById('addSectionBtn').addEventListener('click', () => { sectionsEditingId = '__new__'; renderSectionsList(); });
+  document.getElementById('sectionsOverlay').addEventListener('click', (e) => {
+    if(e.target.id === 'sectionsOverlay') closeSectionsModal();
+  });
   document.getElementById('importFileInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if(file) importBackup(file);
@@ -3625,9 +3940,10 @@ async function init(){
   });
   document.getElementById('btnReset').addEventListener('click', async () => {
     menu.classList.remove('open');
-    const ok = await customConfirm('Restaurar os dados de exemplo? Isso substitui os dados atuais salvos neste navegador.', { confirmLabel:'Restaurar' });
+    const ok = await customConfirm('Restaurar os dados de exemplo? Isso substitui os dados atuais salvos neste navegador, incluindo as abas personalizadas.', { confirmLabel:'Restaurar' });
     if(ok){
       state = seedData();
+      rebuildSectionsRuntime();
       saveData(true);
       renderTabs(); renderMain();
       toast('Dados de exemplo restaurados');
@@ -3635,9 +3951,11 @@ async function init(){
   });
   document.getElementById('btnWipe').addEventListener('click', async () => {
     menu.classList.remove('open');
-    const ok = await customConfirm('Apagar TODOS os dados salvos neste navegador (e na nuvem)? Essa ação não pode ser desfeita.', { confirmLabel:'Apagar tudo' });
+    const ok = await customConfirm('Apagar TODOS os dados salvos neste navegador (e na nuvem)? Essa ação não pode ser desfeita. As abas do menu são mantidas — só os cartões são apagados.', { confirmLabel:'Apagar tudo' });
     if(ok){
-      state = { sections: Object.fromEntries(SECTIONS.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[]}, reportDrafts:{utilizacao:null,termo:null}, reportUiType:'utilizacao' };
+      const keepSections = (state && Array.isArray(state.sectionsConfig) && state.sectionsConfig.length) ? state.sectionsConfig : cloneDefaultSections();
+      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[]}, reportDrafts:{utilizacao:null,termo:null}, reportUiType:'utilizacao' };
+      rebuildSectionsRuntime();
       saveData(true);
       renderTabs(); renderMain();
       toast('Todos os dados foram apagados');
@@ -3659,6 +3977,7 @@ async function init(){
   document.addEventListener('keydown', (e) => {
     if(e.key !== 'Escape') return;
     if(document.getElementById('confirmOverlay').classList.contains('open')) closeConfirm(false);
+    else if(document.getElementById('sectionsOverlay').classList.contains('open')) closeSectionsModal();
     else if(document.getElementById('cardOverlay').classList.contains('open')) closeCardModal();
   });
 

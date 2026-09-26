@@ -906,7 +906,7 @@
 
       <div class="subsection">
         <h5><span>Anexos / referências</span></h5>
-        <p class="field-help">Anexe um arquivo diretamente (fica guardado nesta ferramenta) ou cole o link de onde ele já estiver salvo, como o Drive.</p>
+        <p class="field-help">Anexe um arquivo diretamente (fica guardado com segurança no banco compartilhado, acessível só para quem tem login) ou cole o link de onde ele já estiver salvo, como o Drive.</p>
         <div class="attach-list" id="attachList"></div>
         <div class="add-row add-row-attach">
           <input type="text" id="newAttachName" placeholder="Nome do anexo (ex.: Contrato assinado)" maxlength="120">
@@ -917,7 +917,7 @@
           <button class="btn small ghost" id="uploadFileBtn" type="button">📎 Anexar arquivo do computador</button>
           <span id="uploadStatus" class="field-help" style="margin:0;"></span>
         </div>
-        <p class="field-help hidden" id="uploadUnavailableNote" style="margin-top:-4px;">Anexar arquivo do computador não está disponível nesta versão autônoma. Use o campo de link acima (ex.: um link do Google Drive).</p>
+        <p class="field-help hidden" id="uploadUnavailableNote" style="margin-top:-4px;">Anexar arquivo do computador só funciona com o site ligado ao banco compartilhado (Supabase) — veja o README.md. Enquanto isso, use o campo de link acima.</p>
         <input type="file" id="fileAttachInput" class="hidden">
       </div>
 
@@ -2280,7 +2280,11 @@ function renderAttachEditor(){
   }
   host.innerHTML = items.map((item, idx) => {
     if(item.kind === 'file'){
-      const isImg = (item.contentType || '').startsWith('image/');
+      // Arquivos enviados de verdade (Supabase Storage) não guardam uma URL
+      // fixa — o link é gerado na hora, só quando alguém clica em abrir, então
+      // aqui sempre mostramos o ícone genérico (não dá pra pré-carregar uma
+      // miniatura sem antes pedir um link assinado ao banco).
+      const isImg = (item.contentType || '').startsWith('image/') && item.url && !item.assetId;
       const thumb = isImg
         ? `<img class="attach-thumb" src="${escapeHtml(item.url)}" alt="">`
         : `<span class="attach-ico">📄</span>`;
@@ -2310,24 +2314,49 @@ function renderAttachEditor(){
     window.__editAttachments[+e.target.dataset.aurl].url = e.target.value.trim();
     renderAttachEditor();
   }));
-  host.querySelectorAll('[data-aopen]').forEach(btn => btn.addEventListener('click', (e) => {
+  host.querySelectorAll('[data-aopen]').forEach(btn => btn.addEventListener('click', async (e) => {
     const idx = +e.target.closest('[data-aopen]').dataset.aopen;
     const item = window.__editAttachments[idx];
-    const u = item.kind === 'file' ? item.url : safeUrl(item.url);
-    if(u) window.open(u, '_blank', 'noopener');
+    if(item.kind === 'file'){
+      if(item.assetId){
+        // Anexo enviado de verdade (Supabase Storage, arquivo privado): gera
+        // um link temporário (60s) na hora de abrir, em vez de guardar uma
+        // URL fixa — assim o arquivo continua acessível só para quem tem
+        // login, mesmo que o link vaze.
+        if(!supabaseConfigured){
+          toast('Não é possível abrir o arquivo — este site não está ligado ao banco compartilhado', true);
+          return;
+        }
+        try{
+          const { data, error } = await sb.storage.from('anexos').createSignedUrl(item.assetId, 60);
+          if(error) throw error;
+          window.open(data.signedUrl, '_blank', 'noopener');
+        }catch(err){
+          console.warn('Falha ao gerar link do anexo', err);
+          toast('Não foi possível abrir o arquivo agora — tente de novo', true);
+        }
+      } else if(item.url){
+        window.open(item.url, '_blank', 'noopener');
+      }
+    } else {
+      const u = safeUrl(item.url);
+      if(u) window.open(u, '_blank', 'noopener');
+    }
   }));
   host.querySelectorAll('[data-rma]').forEach(btn => btn.addEventListener('click', async (e) => {
     const idx = +e.target.closest('[data-rma]').dataset.rma;
     const item = window.__editAttachments[idx];
-    if(item.kind === 'file' && item.assetId){
-      try{
-        const assets = window.claude && window.claude.use ? await window.claude.use('assets') : null;
-        if(assets) await assets.delete(item.assetId);
-      }catch(err){ console.warn('Falha ao remover arquivo do armazenamento', err); }
+    if(item.kind === 'file' && item.assetId && supabaseConfigured){
+      try{ await sb.storage.from('anexos').remove([item.assetId]); }
+      catch(err){ console.warn('Falha ao remover arquivo do armazenamento', err); }
     }
     window.__editAttachments.splice(idx, 1);
     renderAttachEditor();
   }));
+}
+
+function sanitizeFileNameForStorage(name){
+  return String(name || 'arquivo').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-140) || 'arquivo';
 }
 
 async function handleFileAttach(file){
@@ -2338,35 +2367,42 @@ async function handleFileAttach(file){
     toast('Arquivo maior que 20 MB — não é possível anexar', true);
     return;
   }
-  if(!(window.claude && typeof window.claude.use === 'function')){
-    toast('Anexar arquivo do computador não está disponível nesta versão autônoma — use o campo de link acima', true);
+  if(!supabaseConfigured){
+    toast('Anexar arquivo não está disponível — este site ainda não está ligado ao banco compartilhado (veja o README.md)', true);
     return;
   }
   btn.disabled = true;
   statusEl.textContent = 'Enviando…';
   try{
-    const assets = await window.claude.use('assets');
-    if(!assets){
-      toast('Anexar arquivo não está disponível para você nesta página', true);
-      statusEl.textContent = '';
-      btn.disabled = false;
-      return;
-    }
-    const result = await assets.upload(file);
+    // Cada arquivo vai para uma pasta com o e-mail de quem enviou, dentro do
+    // bucket privado "anexos" do Supabase Storage — só quem tem login
+    // consegue ler ou baixar (mesma regra do resto do quadro).
+    const folder = (currentUserEmail || 'equipe').replace(/[^a-zA-Z0-9]+/g, '_') || 'equipe';
+    const path = `${folder}/${Date.now()}-${uid()}-${sanitizeFileNameForStorage(file.name)}`;
+    const { data, error } = await sb.storage.from('anexos').upload(path, file, {
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+    if(error) throw error;
     window.__editAttachments.push({
       id: uid(),
       name: file.name,
-      url: result.url,
+      url: '',
       kind: 'file',
-      assetId: result.id,
-      sizeBytes: result.sizeBytes || file.size,
-      contentType: result.contentType || file.type,
+      assetId: data.path,
+      sizeBytes: file.size,
+      contentType: file.type || '',
     });
     renderAttachEditor();
     toast('Arquivo anexado');
   }catch(err){
     console.warn('Falha no upload', err);
-    toast('Não foi possível enviar o arquivo — tente novamente', true);
+    const msg = String((err && err.message) || '').toLowerCase();
+    if(msg.indexOf('bucket not found') !== -1){
+      toast('O banco ainda não tem o espaço de anexos configurado — veja o README.md (Passo a passo — anexos)', true);
+    } else {
+      toast('Não foi possível enviar o arquivo — tente novamente', true);
+    }
   }finally{
     statusEl.textContent = '';
     btn.disabled = false;
@@ -4017,12 +4053,15 @@ async function init(){
     });
   });
 
-  // Versão autônoma (fora do Claude): não há como armazenar o arquivo enviado,
-  // então avisamos com antecedência em vez de deixar a pessoa tentar e falhar.
-  if(!(window.claude && typeof window.claude.use === 'function')){
+  // Anexar arquivo usa o mesmo banco compartilhado (Supabase Storage) do
+  // resto do site. Se por algum motivo o site ainda não estiver ligado a
+  // ele, avisamos com antecedência em vez de deixar a pessoa tentar e falhar
+  // (na prática isso não deveria acontecer, já que o login também depende
+  // do Supabase — mas fica como proteção extra).
+  if(!supabaseConfigured){
     const upBtn = document.getElementById('uploadFileBtn');
     const upNote = document.getElementById('uploadUnavailableNote');
-    if(upBtn){ upBtn.disabled = true; upBtn.title = 'Disponível apenas na versão publicada no Claude'; }
+    if(upBtn){ upBtn.disabled = true; upBtn.title = 'Disponível quando o site estiver ligado ao banco compartilhado (Supabase)'; }
     if(upNote){ upNote.classList.remove('hidden'); }
   }
 }

@@ -772,12 +772,12 @@
   }
   .rel-items-table tbody td{ padding:6px 8px; border-bottom:1px solid var(--border-soft); }
   .rel-items-table tbody tr:hover{ background:var(--surface-2); }
-  .rel-items-table input[type=text]{
+  .rel-items-table input[type=text], .rel-items-table input[type=time]{
     width:100%; border:1px solid transparent; background:transparent; border-radius:6px;
     padding:6px 7px; font-size:13px; color:var(--ink); font-family:inherit;
   }
-  .rel-items-table input[type=text]:hover{ background:var(--canvas); }
-  .rel-items-table input[type=text]:focus{ background:var(--canvas); border-color:var(--accent); }
+  .rel-items-table input[type=text]:hover, .rel-items-table input[type=time]:hover{ background:var(--canvas); }
+  .rel-items-table input[type=text]:focus, .rel-items-table input[type=time]:focus{ background:var(--canvas); border-color:var(--accent); }
   .rel-item-num{ font-family:var(--font-display); font-size:12px; color:var(--ink-faint); text-align:center; width:28px; }
   .rel-history-item{
     display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--border-soft); flex-wrap:wrap;
@@ -1087,7 +1087,7 @@ function mkCard(opts){
 
 /* ---------- Seed data (transcrito do quadro anterior, como ponto de partida) ---------- */
 function seedData(){
-  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [] }, reportDrafts: { utilizacao: null, termo: null }, reportUiType: 'utilizacao' };
+  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null }, reportUiType: 'utilizacao' };
   for(const s of DEFAULT_SECTIONS){
     data.sections[s.id] = {};
     for(const c of s.columns) data.sections[s.id][c.id] = [];
@@ -1297,13 +1297,14 @@ function normalizeState(data){
   if(!data.reports || typeof data.reports !== 'object') data.reports = {};
   if(!Array.isArray(data.reports.utilizacao)) data.reports.utilizacao = [];
   if(!Array.isArray(data.reports.termo)) data.reports.termo = [];
-  if(!data.reportDrafts || typeof data.reportDrafts !== 'object') data.reportDrafts = { utilizacao: null, termo: null };
+  if(!Array.isArray(data.reports.tempos)) data.reports.tempos = [];
+  if(!data.reportDrafts || typeof data.reportDrafts !== 'object') data.reportDrafts = { utilizacao: null, termo: null, tempos: null };
   // migrate the old single-draft shape (pre-Termo de Utilização) into the new per-type map
   if(data.reportDraft && typeof data.reportDraft === 'object' && !data.reportDrafts.utilizacao){
     data.reportDrafts.utilizacao = data.reportDraft;
   }
   delete data.reportDraft;
-  if(data.reportUiType !== 'utilizacao' && data.reportUiType !== 'termo') data.reportUiType = 'utilizacao';
+  if(!['utilizacao','termo','tempos'].includes(data.reportUiType)) data.reportUiType = 'utilizacao';
   return data;
 }
 
@@ -1840,7 +1841,7 @@ function renderTabs(){
   nav.innerHTML = items.map(s => {
     let count = '';
     if(s.id === 'retiradas') count = `<span class="tab-count">${(state.retiradas||[]).length}</span>`;
-    else if(s.id === 'relatorios') count = `<span class="tab-count">${(state.reports.utilizacao||[]).length + (state.reports.termo||[]).length}</span>`;
+    else if(s.id === 'relatorios') count = `<span class="tab-count">${(state.reports.utilizacao||[]).length + (state.reports.termo||[]).length + (state.reports.tempos||[]).length}</span>`;
     else if(s.id !== 'dashboard') count = `<span class="tab-count">${countActive(s.id)}</span>`;
     return `<button class="tab-btn ${currentSectionId===s.id?'active':''}" data-accent="${s.id}" data-nav="${s.id}">
       <span class="tab-dot"></span>${s.icon ? s.icon+' ' : ''}${escapeHtml(s.label)} ${count}
@@ -2696,6 +2697,7 @@ function renderRetTable(tableEl, entries){
 const REPORT_TYPES = [
   { id:'utilizacao', label:'Relatório Final de Utilização', icon:'📋' },
   { id:'termo', label:'Termo de Utilização', icon:'📝' },
+  { id:'tempos', label:'Tempos e Movimentos', icon:'⏱️' },
 ];
 
 function freshUtilizacaoDraft(preserve){
@@ -2724,6 +2726,43 @@ function freshTermoDraft(preserve){
   };
 }
 
+function freshTemposDraft(preserve){
+  preserve = preserve || {};
+  return {
+    evento: '', coordenacao: '', data: '', local: '',
+    responsavelItc: preserve.responsavelItc || '',
+    versao: 'Oficial',
+    linhas: Array.from({length:8}, () => ({ id: uid(), dia:'', horaInicio:'', horaFim:'', duracao:'', atividade:'', equipe:'', local:'', obs:'' })),
+  };
+}
+
+function timeToMinutes(hhmm){
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm||'').trim());
+  if(!m) return null;
+  const h = +m[1], mi = +m[2];
+  if(h > 29 || mi > 59) return null;
+  return h*60 + mi;
+}
+function minutesToHM(total){
+  if(total < 0) total += 24*60;
+  const h = Math.floor(total/60), m = total%60;
+  return `${h}h${String(m).padStart(2,'0')}`;
+}
+// Recalcula a duração automaticamente quando início ou fim mudam — devolve
+// true quando muda algo, para o chamador saber que precisa redesenhar a
+// linha (renderItemsEditTable). A pessoa ainda pode digitar a duração à
+// mão depois, se quiser ajustar.
+function temposRowOnChange(item, key){
+  if(key === 'horaInicio' || key === 'horaFim'){
+    const a = timeToMinutes(item.horaInicio), b = timeToMinutes(item.horaFim);
+    if(a != null && b != null){
+      item.duracao = minutesToHM(b - a);
+      return true;
+    }
+  }
+  return false;
+}
+
 function formatDataHora(data, hora){
   const d = data ? fmtDate(data) : '';
   const h = hora ? hora.replace(':', 'h') : '';
@@ -2747,7 +2786,7 @@ function renderItemsEditTable(tableEl, items, columns, onMutate){
   tbody.innerHTML = items.map((item, idx) => `
     <tr data-id="${item.id}">
       <td class="rel-item-num">${idx+1}</td>
-      ${columns.map(c => `<td><input type="text" data-f="${c.key}" value="${escapeHtml(item[c.key]||'')}" placeholder="${escapeHtml(c.placeholder||'')}"></td>`).join('')}
+      ${columns.map(c => `<td><input type="${c.type||'text'}" data-f="${c.key}" value="${escapeHtml(item[c.key]||'')}" placeholder="${escapeHtml(c.placeholder||'')}"></td>`).join('')}
       <td><button class="attach-rm" data-itemdel="${item.id}" aria-label="Remover" title="Remover">✕</button></td>
     </tr>
   `).join('');
@@ -2758,7 +2797,10 @@ function renderItemsEditTable(tableEl, items, columns, onMutate){
       const item = items.find(i => i.id === tr.dataset.id);
       if(!item) return;
       item[e.target.dataset.f] = e.target.value;
+      let needsRedraw = false;
+      if(typeof onMutate === 'function') needsRedraw = !!onMutate(item, e.target.dataset.f);
       saveData(true);
+      if(needsRedraw) renderItemsEditTable(tableEl, items, columns, onMutate);
     });
   });
   tbody.querySelectorAll('[data-itemdel]').forEach(btn => {
@@ -2805,6 +2847,7 @@ function buildRelatorios(){
 
   const host = wrap.querySelector('#relSectionHost');
   if(state.reportUiType === 'termo') buildTermoSection(host);
+  else if(state.reportUiType === 'tempos') buildTemposSection(host);
   else buildUtilizacaoSection(host);
 
   return wrap;
@@ -3206,6 +3249,152 @@ function renderTermoHistory(host){
     const ok = await customConfirm('Excluir este termo do histórico? O PDF já baixado não será afetado.', { confirmLabel:'Excluir' });
     if(ok){
       state.reports.termo = state.reports.termo.filter(r => r.id !== id);
+      saveData(true);
+      renderTabs();
+      renderMain();
+    }
+  }));
+}
+
+/* ---------- Tempos e Movimentos — form ---------- */
+function buildTemposSection(host){
+  if(!state.reportDrafts.tempos) state.reportDrafts.tempos = freshTemposDraft();
+  const draft = state.reportDrafts.tempos;
+
+  const temposCols = [
+    { key:'dia', label:'Dia', placeholder:'Ex.: 14/09', type:'text' },
+    { key:'horaInicio', label:'Início', placeholder:'', type:'time' },
+    { key:'horaFim', label:'Fim', placeholder:'', type:'time' },
+    { key:'duracao', label:'Duração', placeholder:'Auto', type:'text' },
+    { key:'atividade', label:'Atividade / Informações', placeholder:'Ex.: Chegada e organização da sala', type:'text' },
+    { key:'equipe', label:'Equipe responsável', placeholder:'Ex.: Hortência, Lauren', type:'text' },
+    { key:'local', label:'Local', placeholder:'Ex.: Laboratório 2', type:'text' },
+    { key:'obs', label:'Obs.', placeholder:'Opcional', type:'text' },
+  ];
+
+  host.innerHTML = `
+    <div class="rel-form panel">
+      <div class="field-row">
+        <div class="field">
+          <label>Evento / curso</label>
+          <input type="text" id="temposEvento" value="${escapeHtml(draft.evento)}" placeholder="Ex.: Total Graf+">
+        </div>
+        <div class="field">
+          <label>Coordenação</label>
+          <input type="text" id="temposCoordenacao" value="${escapeHtml(draft.coordenacao)}" placeholder="Nome do(a) coordenador(a)">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Data(s)</label>
+          <input type="text" id="temposData" value="${escapeHtml(draft.data)}" placeholder="Ex.: 14/09/2026 ou 14 a 16/09/2026">
+        </div>
+        <div class="field">
+          <label>Local</label>
+          <input type="text" id="temposLocal" value="${escapeHtml(draft.local)}" placeholder="Ex.: ITC Jardins">
+        </div>
+        <div class="field">
+          <label>Responsável ITC</label>
+          <input type="text" id="temposResponsavel" value="${escapeHtml(draft.responsavelItc)}" placeholder="Nome completo">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Versão</label>
+        <input type="text" id="temposVersao" value="${escapeHtml(draft.versao)}" placeholder="Ex.: Oficial, Rascunho..." style="max-width:220px;">
+      </div>
+
+      <div class="subsection">
+        <h5><span>Cronograma — tempos e movimentos</span></h5>
+        <p class="field-help" style="margin:-2px 0 8px;">Preencha o início e o fim de cada atividade — a duração é calculada sozinha. Se o evento tiver mais de um dia, use a coluna "Dia" para identificar cada linha: tudo sai numa única página no PDF.</p>
+        <div class="rel-items-table-wrap scrollbar">
+          <table class="rel-items-table ret-table" id="temposItemsTable"></table>
+        </div>
+        <button class="btn small" id="temposAddItemBtn" type="button">+ Adicionar linha</button>
+      </div>
+
+      <div class="rel-form-actions">
+        <button class="btn ghost" id="temposClearBtn" type="button">Limpar formulário</button>
+        <button class="btn primary" id="temposGenerateBtn" type="button">⭳ Gerar PDF</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>🗂 Histórico de cronogramas emitidos</h3>
+      <div id="temposHistoryList"></div>
+    </div>
+  `;
+
+  host.querySelector('#temposEvento').addEventListener('change', (e) => { draft.evento = e.target.value; saveData(true); });
+  host.querySelector('#temposCoordenacao').addEventListener('change', (e) => { draft.coordenacao = e.target.value; saveData(true); });
+  host.querySelector('#temposData').addEventListener('change', (e) => { draft.data = e.target.value; saveData(true); });
+  host.querySelector('#temposLocal').addEventListener('change', (e) => { draft.local = e.target.value; saveData(true); });
+  host.querySelector('#temposResponsavel').addEventListener('change', (e) => { draft.responsavelItc = e.target.value; saveData(true); });
+  host.querySelector('#temposVersao').addEventListener('change', (e) => { draft.versao = e.target.value; saveData(true); });
+
+  host.querySelector('#temposAddItemBtn').addEventListener('click', () => {
+    draft.linhas.push({ id: uid(), dia:'', horaInicio:'', horaFim:'', duracao:'', atividade:'', equipe:'', local:'', obs:'' });
+    saveData(true);
+    renderItemsEditTable(host.querySelector('#temposItemsTable'), draft.linhas, temposCols, temposRowOnChange);
+  });
+
+  host.querySelector('#temposClearBtn').addEventListener('click', async () => {
+    const ok = await customConfirm('Limpar todos os campos do formulário? O histórico já emitido não será afetado.', { confirmLabel:'Limpar' });
+    if(ok){
+      state.reportDrafts.tempos = freshTemposDraft({ responsavelItc: draft.responsavelItc });
+      saveData(true);
+      renderMain();
+    }
+  });
+
+  host.querySelector('#temposGenerateBtn').addEventListener('click', () => {
+    exportTemposPDF(draft);
+  });
+
+  renderItemsEditTable(host.querySelector('#temposItemsTable'), draft.linhas, temposCols, temposRowOnChange);
+  renderTemposHistory(host.querySelector('#temposHistoryList'));
+}
+
+function renderTemposHistory(host){
+  const list = (state.reports.tempos || []).slice().sort((a,b) => b.createdAt - a.createdAt);
+  if(list.length === 0){
+    host.innerHTML = `<div class="empty-mini">Nenhum cronograma emitido ainda. Preencha o formulário acima e clique em "Gerar PDF".</div>`;
+    return;
+  }
+  host.innerHTML = list.map(r => `
+    <div class="rel-history-item" data-id="${r.id}">
+      <div class="rel-history-main">
+        <strong>${escapeHtml(r.evento || 'Sem evento')}</strong>
+        <div>${escapeHtml(r.data) || 'sem data'} · ${escapeHtml(r.local || 'sem local')}</div>
+      </div>
+      <div class="rel-history-actions">
+        <button class="btn small ghost" data-tmload="${r.id}">↺ Carregar</button>
+        <button class="btn small" data-tmdl="${r.id}">⭳ Baixar de novo</button>
+        <button class="btn small danger" data-tmrm="${r.id}">Excluir</button>
+      </div>
+    </div>
+  `).join('');
+
+  host.querySelectorAll('[data-tmload]').forEach(btn => btn.addEventListener('click', async (e) => {
+    const rec = list.find(r => r.id === e.target.dataset.tmload);
+    if(!rec) return;
+    const ok = await customConfirm('Carregar este cronograma no formulário? Os dados atuais do formulário serão substituídos.', { confirmLabel:'Carregar' });
+    if(ok){
+      state.reportDrafts.tempos = JSON.parse(JSON.stringify(rec));
+      saveData(true);
+      renderMain();
+    }
+  }));
+  host.querySelectorAll('[data-tmdl]').forEach(btn => btn.addEventListener('click', (e) => {
+    const rec = list.find(r => r.id === e.target.dataset.tmdl);
+    if(rec) exportTemposPDF(rec, { archive:false });
+  }));
+  host.querySelectorAll('[data-tmrm]').forEach(btn => btn.addEventListener('click', async (e) => {
+    const id = e.target.dataset.tmrm;
+    const ok = await customConfirm('Excluir este cronograma do histórico? O PDF já baixado não será afetado.', { confirmLabel:'Excluir' });
+    if(ok){
+      state.reports.tempos = state.reports.tempos.filter(r => r.id !== id);
       saveData(true);
       renderTabs();
       renderMain();
@@ -3942,6 +4131,220 @@ async function exportTermoPDF(report, opts){
   }
 }
 
+/* ---------- Tempos e Movimentos — PDF (cronograma em página única, paisagem) ----------
+   Página A4 paisagem (mais larga que alta) para caber as 8 colunas do
+   cronograma sem apertar demais. Diferente dos outros dois relatórios,
+   este NUNCA pagina: a função tenta tamanhos de fonte cada vez menores até
+   o cabeçalho da tabela + todas as linhas caberem na altura disponível de
+   uma única página — exatamente o que foi pedido ("1 página só"). */
+function buildTemposPages(report){
+  const pageW = 841.89, pageH = 595.28, marginX = 34;
+  const contentW = pageW - marginX*2;
+  const RUST=[168,118,62], TEAL=[20,48,45], TINT=[245,247,246], BORDER=[223,230,226],
+        INK=[22,33,28], INKSOFT=[84,101,93], FAINT=[140,150,145], WHITE=[255,255,255];
+
+  let ctx = makePdfCtx(pageW, pageH);
+  let y = 32;
+
+  ctx.text(marginX, y, 'PLANEJAMENTO OPERACIONAL', {bold:true, size:9, color:RUST});
+  y += 20;
+  ctx.text(marginX, y, 'Tempos e Movimentos', {size:18, color:INK});
+  y += 15;
+  ctx.text(marginX, y, 'Planejamento, execução e registro de eventos ITC', {size:9, color:INKSOFT});
+  y += 8;
+  ctx.setStroke(...TEAL); ctx.setLineWidth(1.2);
+  ctx.line(marginX, y, pageW-marginX, y);
+  y += 15;
+
+  // faixa de informações do evento — uma linha só, para deixar o máximo de
+  // altura disponível para o cronograma abaixo
+  const infoFields = [
+    ['EVENTO', report.evento],
+    ['COORDENAÇÃO', report.coordenacao],
+    ['DATA(S)', report.data],
+    ['LOCAL', report.local],
+    ['RESPONSÁVEL ITC', report.responsavelItc],
+  ];
+  const infoH = 32;
+  const infoW = contentW / infoFields.length;
+  ctx.setFill(...TINT); ctx.fillRect(marginX, y, contentW, infoH);
+  ctx.setStroke(...BORDER); ctx.setLineWidth(0.7); ctx.strokeRect(marginX, y, contentW, infoH);
+  infoFields.forEach((f, i) => {
+    const fx = marginX + i*infoW;
+    if(i > 0){ ctx.setStroke(...BORDER); ctx.setLineWidth(0.7); ctx.line(fx, y, fx, y+infoH); }
+    ctx.text(fx+8, y+12, f[0], {bold:true, size:6.4, color:INKSOFT});
+    const wrapped = pdfWrapText(f[1] || '—', infoW-16, 9);
+    ctx.text(fx+8, y+25, wrapped[0] || '—', {bold:true, size:9, color:INK});
+  });
+  y += infoH + 10;
+
+  const tableTop = y;
+  const footerReserve = 24; // linha + legenda de versão/rodapé (sem bloco de assinatura)
+  const bottomLimit = pageH - footerReserve;
+  const availableH = bottomLimit - tableTop;
+
+  const cols = [
+    { key:'dia', label:'DIA', w: 42 },
+    { key:'horaInicio', label:'INÍCIO', w: 40 },
+    { key:'horaFim', label:'FIM', w: 36 },
+    { key:'duracao', label:'DURAÇÃO', w: 46 },
+    { key:'atividade', label:'ATIVIDADE / INFORMAÇÕES', w: 0 }, // flex — completa a largura que sobrar
+    { key:'equipe', label:'EQUIPE RESPONSÁVEL', w: 130 },
+    { key:'local', label:'LOCAL', w: 105 },
+    { key:'obs', label:'OBS.', w: 85 },
+  ];
+  const fixedW = cols.reduce((s,c) => s + (c.key === 'atividade' ? 0 : c.w), 0);
+  cols.find(c => c.key === 'atividade').w = Math.max(90, contentW - fixedW);
+
+  const rawItems = report.linhas || [];
+  const items = rawItems.filter(it => Object.keys(it||{}).some(k => k !== 'id' && String(it[k]||'').trim()));
+  const rows = items.length ? items : [{ dia:'', horaInicio:'', horaFim:'', duracao:'', atividade:'', equipe:'', local:'', obs:'' }];
+
+  // tenta do maior para o menor tamanho de fonte até o cronograma inteiro
+  // caber numa página só (o pedido da pessoa). Se nem no menor tamanho
+  // couber — um cronograma realmente extenso, com dezenas de linhas de
+  // texto longo — o desenho abaixo continua numa 2ª página em vez de
+  // cortar informação em silêncio; no uso normal (a agenda de um dia de
+  // curso) isso não acontece.
+  const sizeCandidates = [8, 7.5, 7, 6.5, 6, 5.6];
+  let chosen = null;
+  for(const size of sizeCandidates){
+    const lineH = size + 2.2;
+    const headWrapped = cols.map(c => pdfWrapText(c.label, c.w-6, size));
+    const headLines = Math.max(1, ...headWrapped.map(w=>w.length));
+    const headH = headLines*lineH + 6;
+    const rowHeights = rows.map(it => {
+      const wrapped = cols.map(c => pdfWrapText(it[c.key]||'', c.w-6, size));
+      const lines = Math.max(1, ...wrapped.map(w=>w.length));
+      return Math.max(lineH+6, lines*lineH + 6);
+    });
+    const totalH = headH + rowHeights.reduce((a,b)=>a+b, 0);
+    chosen = { size, lineH, headWrapped, headH, rowHeights, totalH };
+    if(totalH <= availableH) break;
+  }
+
+  const { size, lineH, headWrapped, headH } = chosen;
+
+  // Recalcula as alturas das linhas no tamanho escolhido (o candidato acima
+  // pode ter sido o menor da lista sem garantir que tudo cabe — ver abaixo).
+  const rowHeights = rows.map(it => {
+    const wrapped = cols.map(c => pdfWrapText(it[c.key]||'', c.w-6, size));
+    const lines = Math.max(1, ...wrapped.map(w=>w.length));
+    return Math.max(lineH+6, lines*lineH + 6);
+  });
+
+  const pages = [ctx];
+  const footerReserveBottom = pageH - footerReserve;
+
+  function drawTableHead(){
+    ctx.setFill(...TEAL); ctx.fillRect(marginX, y, contentW, headH);
+    let hx = marginX;
+    cols.forEach((c, i) => {
+      headWrapped[i].forEach((line, li) => ctx.text(hx+4, y+lineH*(li+0.82), line, {bold:true, size, color:WHITE}));
+      hx += c.w;
+    });
+    y += headH;
+  }
+
+  // Página adicional — só é usada no caso raro de um cronograma tão extenso
+  // que nem a menor fonte legível o encaixaria numa única página; preferimos
+  // continuar numa 2ª página a cortar informação da pessoa em silêncio.
+  function newTemposPage(){
+    ctx = makePdfCtx(pageW, pageH);
+    pages.push(ctx);
+    y = 28;
+    ctx.text(marginX, y, 'TEMPOS E MOVIMENTOS  (continuação)', {bold:true, size:8.5, color:RUST});
+    y += 16;
+    drawTableHead();
+  }
+
+  drawTableHead();
+
+  rows.forEach((it, ri) => {
+    const rH = rowHeights[ri];
+    if(y + rH > footerReserveBottom){
+      newTemposPage();
+    }
+    if(ri % 2 === 1){ ctx.setFill(...TINT); ctx.fillRect(marginX, y, contentW, rH); }
+    ctx.setStroke(...BORDER); ctx.setLineWidth(0.4); ctx.strokeRect(marginX, y, contentW, rH);
+    let x = marginX;
+    cols.forEach(c => {
+      const wrapped = pdfWrapText(it[c.key]||'', c.w-6, size);
+      wrapped.forEach((line, li) => ctx.text(x+4, y+lineH*(li+0.82), line, {size, color:INK}));
+      x += c.w;
+    });
+    y += rH;
+  });
+
+  const stamp = new Date().toLocaleString('pt-BR');
+  pages.forEach((p, idx) => {
+    p.setStroke(...BORDER); p.setLineWidth(0.6);
+    p.line(marginX, pageH-18, pageW-marginX, pageH-18);
+    p.text(marginX, pageH-7, `Versão: ${report.versao || 'Oficial'}  ·  Gerado em ${stamp}`, {size:6.4, color:FAINT});
+    const rightLabel = pages.length > 1 ? `Página ${idx+1} de ${pages.length}` : 'Central de Controle Operacional — Anatomia · Grupo Kefraya';
+    p.textRight(pageW-marginX, pageH-7, rightLabel, {size:6.4, color:FAINT});
+  });
+
+  return { pages, pageW, pageH };
+}
+
+function generateTemposPdfBlob(report){
+  const { pages, pageW, pageH } = buildTemposPages(report);
+  const pdfString = assemblePdf(pages.map(p=>p.ops), pageW, pageH);
+  return pdfStringToBlob(pdfString);
+}
+
+async function exportTemposPDF(report, opts){
+  opts = opts || {};
+  const archive = opts.archive !== false;
+  const btn = document.getElementById('temposGenerateBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
+  try{
+    const blob = generateTemposPdfBlob(report);
+    const namePart = (report.evento||'tempos-movimentos').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+    const filename = `tempos-movimentos-${todayISO()}-${namePart || 'sem-nome'}.pdf`;
+
+    let handled = false;
+    try{
+      if(window.claude && typeof window.claude.use === 'function'){
+        const downloads = await window.claude.use('downloads');
+        if(downloads){
+          await downloads.save({ filename, data: blob });
+          handled = true;
+        }
+      }
+    }catch(e){
+      if(e && e.code === 'declined'){ handled = true; }
+      else console.warn('downloads capability failed for tempos pdf', e);
+    }
+
+    if(!handled){
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+    toast('PDF exportado');
+
+    if(archive){
+      const record = JSON.parse(JSON.stringify(report));
+      record.id = uid();
+      record.createdAt = Date.now();
+      state.reports.tempos.push(record);
+      state.reportDrafts.tempos = freshTemposDraft({ responsavelItc: report.responsavelItc });
+      saveData(true);
+      renderTabs();
+      renderMain();
+    }
+  }catch(err){
+    console.warn('Falha ao gerar PDF de tempos e movimentos', err);
+    toast('Não foi possível gerar o PDF — tente novamente', true);
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '⭳ Gerar PDF'; }
+  }
+}
+
 /* ---------- Init ---------- */
 async function init(){
   applyStoredTheme();
@@ -3990,7 +4393,7 @@ async function init(){
     const ok = await customConfirm('Apagar TODOS os dados salvos neste navegador (e na nuvem)? Essa ação não pode ser desfeita. As abas do menu são mantidas — só os cartões são apagados.', { confirmLabel:'Apagar tudo' });
     if(ok){
       const keepSections = (state && Array.isArray(state.sectionsConfig) && state.sectionsConfig.length) ? state.sectionsConfig : cloneDefaultSections();
-      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[]}, reportDrafts:{utilizacao:null,termo:null}, reportUiType:'utilizacao' };
+      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null}, reportUiType:'utilizacao' };
       rebuildSectionsRuntime();
       saveData(true);
       renderTabs(); renderMain();

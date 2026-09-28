@@ -779,6 +779,15 @@
   .rel-items-table input[type=text]:hover, .rel-items-table input[type=time]:hover{ background:var(--canvas); }
   .rel-items-table input[type=text]:focus, .rel-items-table input[type=time]:focus{ background:var(--canvas); border-color:var(--accent); }
   .rel-item-num{ font-family:var(--font-display); font-size:12px; color:var(--ink-faint); text-align:center; width:28px; }
+  .rel-color-cell{ white-space:nowrap; padding:6px 5px !important; }
+  .rel-color-swatch{
+    display:inline-block; width:17px; height:17px; margin:1px 2px; padding:0;
+    border-radius:5px; border:1.5px solid var(--border); cursor:pointer; vertical-align:middle;
+    font-size:9px; line-height:14px; color:var(--ink-faint); text-align:center;
+  }
+  .rel-color-swatch.rel-color-none{ background:var(--surface); }
+  .rel-color-swatch:hover{ border-color:var(--accent); }
+  .rel-color-swatch.active{ border-color:var(--ink); box-shadow:0 0 0 2px var(--accent); }
   .rel-history-item{
     display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--border-soft); flex-wrap:wrap;
   }
@@ -2726,13 +2735,35 @@ function freshTermoDraft(preserve){
   };
 }
 
+// Paleta fixa de cores para destacar linhas-chave do cronograma (início
+// operacional, pausas de alimentação, organização final etc.) — usada tanto
+// no seletor da tabela (tela) quanto no preenchimento das linhas no PDF.
+const TEMPOS_ROW_COLORS = [
+  { key:'', label:'Sem cor', hex:null },
+  { key:'verde', label:'Verde — ex.: início / preparação', hex:'#D9F0DD' },
+  { key:'laranja', label:'Laranja — ex.: pausa / alimentação', hex:'#FBE1C6' },
+  { key:'azul', label:'Azul — ex.: organização / encerramento', hex:'#D8E7F5' },
+  { key:'amarelo', label:'Amarelo — ex.: atenção', hex:'#FBF0BE' },
+  { key:'roxo', label:'Roxo — ex.: destaque', hex:'#E7DCF2' },
+  { key:'rosa', label:'Rosa — ex.: crítico / urgente', hex:'#F8DCE6' },
+  { key:'cinza', label:'Cinza — ex.: neutro / informativo', hex:'#E3E3E3' },
+];
+function temposColorHex(key){
+  const opt = TEMPOS_ROW_COLORS.find(c => c.key === (key||''));
+  return opt ? opt.hex : null;
+}
+function hexToRgb(hex){
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex||''));
+  return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : null;
+}
+
 function freshTemposDraft(preserve){
   preserve = preserve || {};
   return {
     evento: '', coordenacao: '', data: '', local: '',
     responsavelItc: preserve.responsavelItc || '',
     versao: 'Oficial',
-    linhas: Array.from({length:8}, () => ({ id: uid(), dia:'', horaInicio:'', horaFim:'', duracao:'', atividade:'', equipe:'', local:'', obs:'' })),
+    linhas: Array.from({length:8}, () => ({ id: uid(), cor:'', dia:'', horaInicio:'', horaFim:'', duracao:'', atividade:'', equipe:'', local:'', obs:'' })),
   };
 }
 
@@ -2783,13 +2814,27 @@ function renderItemsEditTable(tableEl, items, columns, onMutate){
     <tbody></tbody>
   `;
   const tbody = tableEl.querySelector('tbody');
-  tbody.innerHTML = items.map((item, idx) => `
-    <tr data-id="${item.id}">
+  const colorCol = columns.find(c => c.type === 'color');
+  tbody.innerHTML = items.map((item, idx) => {
+    let rowStyle = '';
+    if(colorCol){
+      const opt = (colorCol.options || []).find(o => o.key === (item[colorCol.key] || ''));
+      if(opt && opt.hex) rowStyle = ` style="background:${opt.hex};"`;
+    }
+    return `
+    <tr data-id="${item.id}"${rowStyle}>
       <td class="rel-item-num">${idx+1}</td>
-      ${columns.map(c => `<td><input type="${c.type||'text'}" data-f="${c.key}" value="${escapeHtml(item[c.key]||'')}" placeholder="${escapeHtml(c.placeholder||'')}"></td>`).join('')}
+      ${columns.map(c => {
+        if(c.type === 'color'){
+          const opts = c.options || [];
+          return `<td class="rel-color-cell">${opts.map(o => `<button type="button" class="rel-color-swatch ${(item[c.key]||'')===o.key?'active':''} ${o.key?'':'rel-color-none'}" data-colorset="${item.id}" data-colorkey="${c.key}" data-colorval="${o.key}" title="${escapeHtml(o.label)}" style="${o.hex?`background:${o.hex};`:''}">${o.key?'':'✕'}</button>`).join('')}</td>`;
+        }
+        return `<td><input type="${c.type||'text'}" data-f="${c.key}" value="${escapeHtml(item[c.key]||'')}" placeholder="${escapeHtml(c.placeholder||'')}"></td>`;
+      }).join('')}
       <td><button class="attach-rm" data-itemdel="${item.id}" aria-label="Remover" title="Remover">✕</button></td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   tbody.querySelectorAll('input').forEach(inp => {
     inp.addEventListener('change', (e) => {
@@ -2801,6 +2846,16 @@ function renderItemsEditTable(tableEl, items, columns, onMutate){
       if(typeof onMutate === 'function') needsRedraw = !!onMutate(item, e.target.dataset.f);
       saveData(true);
       if(needsRedraw) renderItemsEditTable(tableEl, items, columns, onMutate);
+    });
+  });
+  tbody.querySelectorAll('[data-colorset]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const el = e.currentTarget;
+      const item = items.find(i => i.id === el.dataset.colorset);
+      if(!item) return;
+      item[el.dataset.colorkey] = el.dataset.colorval;
+      saveData(true);
+      renderItemsEditTable(tableEl, items, columns, onMutate);
     });
   });
   tbody.querySelectorAll('[data-itemdel]').forEach(btn => {
@@ -3262,6 +3317,7 @@ function buildTemposSection(host){
   const draft = state.reportDrafts.tempos;
 
   const temposCols = [
+    { key:'cor', label:'Cor', type:'color', options: TEMPOS_ROW_COLORS },
     { key:'dia', label:'Dia', placeholder:'Ex.: 14/09', type:'text' },
     { key:'horaInicio', label:'Início', placeholder:'', type:'time' },
     { key:'horaFim', label:'Fim', placeholder:'', type:'time' },
@@ -3307,7 +3363,7 @@ function buildTemposSection(host){
 
       <div class="subsection">
         <h5><span>Cronograma — tempos e movimentos</span></h5>
-        <p class="field-help" style="margin:-2px 0 8px;">Preencha o início e o fim de cada atividade — a duração é calculada sozinha. Se o evento tiver mais de um dia, use a coluna "Dia" para identificar cada linha: tudo sai numa única página no PDF.</p>
+        <p class="field-help" style="margin:-2px 0 8px;">Preencha o início e o fim de cada atividade — a duração é calculada sozinha. Use a coluna "Cor" para destacar pontos-chave (início operacional, pausas de alimentação, organização final etc.) — a cor escolhida aparece também no PDF. Se o evento tiver mais de um dia, use a coluna "Dia" para identificar cada linha: tudo sai numa única página.</p>
         <div class="rel-items-table-wrap scrollbar">
           <table class="rel-items-table ret-table" id="temposItemsTable"></table>
         </div>
@@ -3334,7 +3390,7 @@ function buildTemposSection(host){
   host.querySelector('#temposVersao').addEventListener('change', (e) => { draft.versao = e.target.value; saveData(true); });
 
   host.querySelector('#temposAddItemBtn').addEventListener('click', () => {
-    draft.linhas.push({ id: uid(), dia:'', horaInicio:'', horaFim:'', duracao:'', atividade:'', equipe:'', local:'', obs:'' });
+    draft.linhas.push({ id: uid(), cor:'', dia:'', horaInicio:'', horaFim:'', duracao:'', atividade:'', equipe:'', local:'', obs:'' });
     saveData(true);
     renderItemsEditTable(host.querySelector('#temposItemsTable'), draft.linhas, temposCols, temposRowOnChange);
   });
@@ -4265,7 +4321,12 @@ function buildTemposPages(report){
     if(y + rH > footerReserveBottom){
       newTemposPage();
     }
-    if(ri % 2 === 1){ ctx.setFill(...TINT); ctx.fillRect(marginX, y, contentW, rH); }
+    // Cor escolhida pela pessoa (destaque de ponto-chave) tem prioridade
+    // sobre o zebra-stripe padrão — assim o PDF sai igual ao que ela viu na
+    // tela ao montar o cronograma.
+    const rowRgb = hexToRgb(temposColorHex(it.cor));
+    if(rowRgb){ ctx.setFill(...rowRgb); ctx.fillRect(marginX, y, contentW, rH); }
+    else if(ri % 2 === 1){ ctx.setFill(...TINT); ctx.fillRect(marginX, y, contentW, rH); }
     ctx.setStroke(...BORDER); ctx.setLineWidth(0.4); ctx.strokeRect(marginX, y, contentW, rH);
     let x = marginX;
     cols.forEach(c => {

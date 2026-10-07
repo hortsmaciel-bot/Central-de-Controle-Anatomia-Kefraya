@@ -674,6 +674,7 @@
   [data-accent="pecas"]{ --accent:#8a5fc9; --tint:#f1ecfb; }
   [data-accent="cremacoes"]{ --accent:#595e63; --tint:#eceded; }
   [data-accent="retiradas"]{ --accent:#2f8fc9; --tint:#e2f2fa; }
+  [data-accent="eventos"]{ --accent:#2f8fc9; --tint:#e2f2fa; }
   [data-accent="relatorios"]{ --accent:#a8763e; --tint:#f6ede1; }
   [data-accent="dashboard"]{ --accent:#1f7a4c; --tint:#e6f6ec; }
 
@@ -688,6 +689,7 @@
     :root:not([data-theme="light"]) [data-accent="pecas"]{ --tint:#291f3c; }
     :root:not([data-theme="light"]) [data-accent="cremacoes"]{ --tint:#26282a; }
     :root:not([data-theme="light"]) [data-accent="retiradas"]{ --tint:#122a36; }
+    :root:not([data-theme="light"]) [data-accent="eventos"]{ --tint:#122a36; }
     :root:not([data-theme="light"]) [data-accent="relatorios"]{ --tint:#332811; }
   }
   :root[data-theme="dark"] [data-accent="bh"]{ --tint:#12301f; }
@@ -700,6 +702,7 @@
   :root[data-theme="dark"] [data-accent="pecas"]{ --tint:#291f3c; }
   :root[data-theme="dark"] [data-accent="cremacoes"]{ --tint:#26282a; }
   :root[data-theme="dark"] [data-accent="retiradas"]{ --tint:#122a36; }
+  :root[data-theme="dark"] [data-accent="eventos"]{ --tint:#122a36; }
   :root[data-theme="dark"] [data-accent="relatorios"]{ --tint:#332811; }
 
   .hidden{ display:none !important; }
@@ -788,6 +791,42 @@
   .rel-color-swatch.rel-color-none{ background:var(--surface); }
   .rel-color-swatch:hover{ border-color:var(--accent); }
   .rel-color-swatch.active{ border-color:var(--ink); box-shadow:0 0 0 2px var(--accent); }
+  .rel-check-cell{ text-align:center; }
+  .rel-check-cell input[type=checkbox]{ width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+  .rel-items-table tr.row-done td{ opacity:.55; }
+  .rel-items-table tr.row-done input[type=text]{ text-decoration:line-through; }
+
+  /* ---------- Planejamento de Eventos ---------- */
+  .evt-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr)); gap:14px; }
+  .evt-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:14px; cursor:pointer; display:flex; flex-direction:column; gap:8px; transition:border-color .15s;
+  }
+  .evt-card:hover{ border-color:var(--accent); }
+  .evt-card-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .evt-card-title{ font-family:var(--font-display); font-size:15px; font-weight:700; margin:0; line-height:1.3; }
+  .evt-card-meta{ font-size:12.5px; color:var(--ink-soft); display:flex; flex-direction:column; gap:2px; }
+  .evt-status-badge{
+    font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap;
+    font-family:var(--font-display); flex-shrink:0; align-self:flex-start;
+  }
+  .evt-card-del{ background:none; border:none; color:var(--ink-faint); cursor:pointer; padding:2px 4px; font-size:13px; flex-shrink:0; }
+  .evt-card-del:hover{ color:var(--red); }
+  .evt-empty{
+    grid-column:1/-1; color:var(--ink-faint); font-size:13.5px; padding:30px 10px; text-align:center;
+    border:1.5px dashed var(--border); border-radius:var(--radius-lg);
+  }
+  .evt-checklist-group{ border:1px solid var(--border-soft); border-radius:10px; padding:12px; margin-bottom:10px; }
+  .evt-checklist-group:last-child{ margin-bottom:0; }
+  .evt-group-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .evt-group-title{
+    flex:1; min-width:0; border:1px solid transparent; background:transparent; font-family:var(--font-display);
+    font-size:13px; font-weight:700; color:var(--ink); padding:4px 6px; border-radius:6px;
+  }
+  .evt-group-title:hover{ background:var(--surface-2); }
+  .evt-group-title:focus{ background:var(--canvas); border-color:var(--border); }
+  .evt-group-del{ background:none; border:none; color:var(--ink-faint); cursor:pointer; padding:3px 5px; flex-shrink:0; }
+  .evt-group-del:hover{ color:var(--red); }
   .rel-history-item{
     display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--border-soft); flex-wrap:wrap;
   }
@@ -952,7 +991,7 @@
     <div class="modal-head">
       <div style="flex:1;">
         <h3 style="font-family:var(--font-display); font-size:17px; margin:0; color:var(--ink);">Gerenciar abas do menu</h3>
-        <p class="field-help" style="margin:6px 0 0;">Adicione, edite, reordene ou remova as abas de quadros do cabeçalho. As abas "Visão geral", "Retirada de Peças" e "Relatórios" são fixas e não aparecem aqui.</p>
+        <p class="field-help" style="margin:6px 0 0;">Adicione, edite, reordene ou remova as abas de quadros do cabeçalho. As abas "Visão geral", "Planejamento de Eventos" e "Relatórios" são fixas e não aparecem aqui.</p>
       </div>
       <button class="modal-close" id="sectionsModalCloseBtn" aria-label="Fechar">✕</button>
     </div>
@@ -1033,7 +1072,7 @@ const DONE_COLUMNS = new Set(['concluidas','concluidos']);
 const RETIRADAS_TAB = { id:'retiradas', label:'Retirada de Peças', short:'RET', icon:'🧊' };
 const RELATORIOS_TAB = { id:'relatorios', label:'Relatórios', short:'REL', icon:'📄' };
 const UNIT_REPORT_LABELS = { bh:'BELO HORIZONTE', jds:'JARDINS', bc:'BALNEÁRIO CAMBORIÚ', lapidare:'SÃO PAULO (LAPIDARE)' };
-const RESERVED_TAB_IDS = new Set(['dashboard','retiradas','relatorios']);
+const RESERVED_TAB_IDS = new Set(['dashboard','retiradas','relatorios','eventos']);
 
 // Gera um id novo e único (ex.: "itc-curitiba") a partir do nome digitado
 // pela pessoa, para uma aba criada em "Gerenciar abas do menu".
@@ -1096,7 +1135,7 @@ function mkCard(opts){
 
 /* ---------- Seed data (transcrito do quadro anterior, como ponto de partida) ---------- */
 function seedData(){
-  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null }, reportUiType: 'utilizacao' };
+  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], eventos: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null }, reportUiType: 'utilizacao' };
   for(const s of DEFAULT_SECTIONS){
     data.sections[s.id] = {};
     for(const c of s.columns) data.sections[s.id][c.id] = [];
@@ -1314,6 +1353,46 @@ function normalizeState(data){
   }
   delete data.reportDraft;
   if(!['utilizacao','termo','tempos'].includes(data.reportUiType)) data.reportUiType = 'utilizacao';
+  if(!Array.isArray(data.eventos)) data.eventos = [];
+  for(const ev of data.eventos){
+    if(!ev.id) ev.id = uid();
+    ev.nome = ev.nome || '';
+    ev.local = ev.local || '';
+    ev.dataEvento = ev.dataEvento || '';
+    ev.horario = ev.horario || '';
+    ev.responsavelGeral = ev.responsavelGeral || '';
+    if(!EVENTO_STATUS.some(s => s.key === ev.status)) ev.status = 'planejamento';
+    if(!Array.isArray(ev.dadosChave)) ev.dadosChave = [];
+    for(const d of ev.dadosChave){
+      if(!d.id) d.id = uid();
+      d.label = d.label || '';
+      d.valor = d.valor || '';
+    }
+    if(!Array.isArray(ev.checklistGroups)) ev.checklistGroups = [];
+    for(const g of ev.checklistGroups){
+      if(!g.id) g.id = uid();
+      g.titulo = g.titulo || '';
+      if(!Array.isArray(g.itens)) g.itens = [];
+      for(const it of g.itens){
+        if(!it.id) it.id = uid();
+        it.texto = it.texto || '';
+        it.done = !!it.done;
+      }
+    }
+    if(!Array.isArray(ev.cronograma)) ev.cronograma = [];
+    for(const r of ev.cronograma){
+      if(!r.id) r.id = uid();
+      r.feito = !!r.feito;
+      r.cor = r.cor || '';
+      r.fase = r.fase || '';
+      r.horario = r.horario || '';
+      r.atividade = r.atividade || '';
+      r.responsavel = r.responsavel || '';
+      r.obs = r.obs || '';
+    }
+    if(!ev.createdAt) ev.createdAt = Date.now();
+    if(!ev.updatedAt) ev.updatedAt = Date.now();
+  }
   return data;
 }
 
@@ -1629,8 +1708,8 @@ function closeConfirm(result){
    As abas de quadro (ITC Belo Horizonte, Transportes, etc.) deixaram de
    ser uma lista fixa no código: agora moram em state.sectionsConfig,
    editável por aqui, sincronizada na nuvem como o resto do quadro. As
-   abas "Visão geral", "Retirada de Peças" e "Relatórios" continuam fixas
-   — têm telas próprias, não são quadros genéricos. */
+   abas "Visão geral", "Planejamento de Eventos" e "Relatórios" continuam
+   fixas — têm telas próprias, não são quadros genéricos. */
 let sectionsEditingId = null; // id da aba em edição, '__new__' para uma aba nova, ou null
 
 function openSectionsModal(){
@@ -1846,10 +1925,10 @@ function dateBadgeInfo(card, sectionId, columnId){
 /* ---------- Rendering: nav tabs ---------- */
 function renderTabs(){
   const nav = document.getElementById('tabsNav');
-  const items = [{ id:'dashboard', label:'Visão geral', icon:'▣' }, ...SECTIONS, RETIRADAS_TAB, RELATORIOS_TAB];
+  const items = [{ id:'dashboard', label:'Visão geral', icon:'▣' }, ...SECTIONS, EVENTOS_TAB, RELATORIOS_TAB];
   nav.innerHTML = items.map(s => {
     let count = '';
-    if(s.id === 'retiradas') count = `<span class="tab-count">${(state.retiradas||[]).length}</span>`;
+    if(s.id === 'eventos') count = `<span class="tab-count">${(state.eventos||[]).length}</span>`;
     else if(s.id === 'relatorios') count = `<span class="tab-count">${(state.reports.utilizacao||[]).length + (state.reports.termo||[]).length + (state.reports.tempos||[]).length}</span>`;
     else if(s.id !== 'dashboard') count = `<span class="tab-count">${countActive(s.id)}</span>`;
     return `<button class="tab-btn ${currentSectionId===s.id?'active':''}" data-accent="${s.id}" data-nav="${s.id}">
@@ -1881,8 +1960,8 @@ function renderMain(){
   main.innerHTML = '';
   if(currentSectionId === 'dashboard'){
     main.appendChild(buildDashboard());
-  } else if(currentSectionId === 'retiradas'){
-    main.appendChild(buildRetiradas());
+  } else if(currentSectionId === 'eventos'){
+    main.appendChild(buildEventos());
   } else if(currentSectionId === 'relatorios'){
     main.appendChild(buildRelatorios());
   } else {
@@ -2702,6 +2781,523 @@ function renderRetTable(tableEl, entries){
   });
 }
 
+/* ---------- Planejamento de Eventos ---------- */
+const EVENTOS_TAB = { id:'eventos', label:'Planejamento de Eventos', short:'EVT', icon:'📅' };
+
+const EVENTO_STATUS = [
+  { key:'planejamento', label:'Em planejamento', color:'#b99420' },
+  { key:'confirmado', label:'Confirmado', color:'#3d72d6' },
+  { key:'andamento', label:'Em andamento', color:'#1f9e5c' },
+  { key:'concluido', label:'Concluído', color:'#61758a' },
+  { key:'cancelado', label:'Cancelado', color:'#d9463c' },
+];
+function eventoStatusInfo(key){
+  return EVENTO_STATUS.find(s => s.key === key) || EVENTO_STATUS[0];
+}
+
+function defaultEventoDadosChave(){
+  return [
+    { id: uid(), label:'Data e horário do evento', valor:'' },
+    { id: uid(), label:'Local', valor:'' },
+    { id: uid(), label:'Responsável geral / coordenador', valor:'' },
+    { id: uid(), label:'Médico(s) / palestrante(s) envolvidos', valor:'' },
+    { id: uid(), label:'Procedimento / atividade principal', valor:'' },
+    { id: uid(), label:'Público estimado', valor:'' },
+    { id: uid(), label:'Formato (presencial, transmissão, híbrido)', valor:'' },
+  ];
+}
+
+function defaultEventoChecklistGroups(){
+  const mk = (titulo, textos) => ({ id: uid(), titulo, itens: textos.map(t => ({ id: uid(), texto: t, done:false })) });
+  return [
+    mk('Planejamento, governança e documentação', [
+      'Definir objetivo, data e escopo do evento com a coordenação',
+      'Confirmar orçamento e responsáveis por cada frente',
+      'Levantar autorizações e documentos necessários (consentimentos, termos)',
+      'Alinhar cronograma geral com todos os envolvidos',
+      'Definir plano B para imprevistos (falta de peça, atraso, problema técnico)',
+      'Registrar e distribuir o checklist final para a equipe',
+    ]),
+    mk('Deslocamento e hospedagem da equipe', [
+      'Confirmar passagens/transporte da equipe envolvida',
+      'Reservar hospedagem, se necessário',
+      'Confirmar horários de chegada e saída de cada pessoa',
+      'Organizar transporte de equipamentos e materiais',
+      'Verificar alimentação da equipe durante o evento',
+      'Compartilhar roteiro/itinerário com todos os envolvidos',
+    ]),
+    mk('Reserva de salas e espaços', [
+      'Reservar sala principal do evento',
+      'Reservar sala de apoio / backstage',
+      'Confirmar capacidade e layout do espaço',
+      'Verificar climatização, iluminação e acústica',
+      'Confirmar acesso e horário de liberação do espaço',
+      'Sinalizar o espaço (placas, totens, identificação)',
+      'Checar disponibilidade de banheiros e áreas de apoio próximas',
+    ]),
+    mk('Transmissão: equipamentos e testes', [
+      'Confirmar equipamento de câmera(s)',
+      'Confirmar equipamento de áudio e microfones',
+      'Confirmar plataforma de transmissão (link, acesso)',
+      'Testar conexão de internet/link dedicado',
+      'Testar transmissão completa (dry run) com antecedência',
+      'Definir responsável técnico durante a transmissão',
+      'Preparar equipamento reserva (backup) de câmera e áudio',
+      'Checar iluminação da cena transmitida',
+      'Validar gravação local como backup da transmissão',
+      'Confirmar horário de abertura do sinal/transmissão',
+    ]),
+    mk('Equipamentos e instrumental', [
+      'Levantar lista de instrumentais necessários',
+      'Confirmar esterilização e validade dos materiais',
+      'Confirmar equipamentos específicos do procedimento',
+      'Verificar quantidade suficiente para toda a atividade',
+      'Organizar transporte dos equipamentos até o local',
+      'Checar funcionamento de todos os equipamentos antes do início',
+      'Definir responsável pela guarda e conferência dos equipamentos',
+      'Separar material de reposição/contingência',
+      'Confirmar recolhimento e devolução dos equipamentos após o evento',
+      'Registrar saída e retorno dos itens (controle de patrimônio)',
+    ]),
+    mk('Preparo da peça / material e biossegurança', [
+      'Confirmar disponibilidade e identificação da(s) peça(s)',
+      'Checar condições de conservação da(s) peça(s)',
+      'Organizar transporte adequado (temperatura, embalagem)',
+      'Confirmar EPIs disponíveis para toda a equipe',
+      'Checar descarte adequado de resíduos durante e após o uso',
+      'Confirmar protocolo de biossegurança do local',
+      'Preparar bancada/mesa de trabalho conforme protocolo',
+      'Confirmar procedimento de devolução/descarte final da peça',
+    ]),
+    mk('Convidados, comunicação e cerimonial', [
+      'Confirmar lista de convidados/participantes',
+      'Enviar convites e confirmar presenças',
+      'Preparar material de apoio (apresentação, folders, crachás)',
+      'Definir recepção e credenciamento dos participantes',
+      'Alinhar abertura e condução do evento (mestre de cerimônia)',
+      'Preparar agradecimentos e encerramento',
+      'Organizar registro fotográfico do evento',
+      'Divulgar o evento nos canais apropriados',
+      'Confirmar horário e responsável pela recepção',
+    ]),
+    mk('Pós-evento', [
+      'Recolher e organizar todo o material e equipamento utilizado',
+      'Registrar feedback da equipe e dos participantes',
+      'Elaborar relatório final do evento',
+      'Arquivar gravações, fotos e documentos gerados',
+      'Agradecer formalmente aos envolvidos e parceiros',
+    ]),
+  ];
+}
+
+function defaultEventoCronograma(){
+  const vespera = [
+    'Deslocamento da equipe até o local',
+    'Check-in / hospedagem da equipe',
+    'Reconhecimento do local e dos espaços reservados',
+    'Testes de transmissão e equipamentos (dry run)',
+    'Organização e conferência do material para o dia seguinte',
+  ];
+  const dia = [
+    'Chegada da equipe e organização da sala',
+    'Montagem e testes finais de equipamentos',
+    'Preparo e conferência da(s) peça(s)/material',
+    'Abertura do sinal de transmissão',
+    'Recepção e credenciamento dos participantes',
+    'Abertura / boas-vindas',
+    'Início da atividade principal',
+    'Pausa / intervalo',
+    'Retomada da atividade principal',
+    'Perguntas e encerramento da parte técnica',
+    'Agradecimentos e encerramento oficial',
+    'Encerramento da transmissão',
+    'Organização final do espaço e recolhimento de equipamentos',
+    'Devolução/descarte da(s) peça(s) e materiais',
+  ];
+  const mk = (fase, atividades) => atividades.map(atividade => ({
+    id: uid(), feito:false, cor:'', fase, horario:'', atividade, responsavel:'', obs:'',
+  }));
+  return [...mk('Véspera', vespera), ...mk('Dia do evento', dia)];
+}
+
+function freshEvento(){
+  const now = Date.now();
+  return {
+    id: uid(),
+    nome: '',
+    local: '',
+    dataEvento: '',
+    horario: '',
+    responsavelGeral: '',
+    status: 'planejamento',
+    dadosChave: defaultEventoDadosChave(),
+    checklistGroups: defaultEventoChecklistGroups(),
+    cronograma: defaultEventoCronograma(),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function eventoProgress(evento){
+  let done = 0, total = 0;
+  (evento.checklistGroups || []).forEach(g => (g.itens || []).forEach(it => {
+    total++;
+    if(it.done) done++;
+  }));
+  return { done, total };
+}
+
+let eventosOpenId = null; // id do evento aberto em detalhe nesta sessão, ou null para a lista
+
+function buildEventos(){
+  const wrap = document.createElement('div');
+  wrap.className = 'view active';
+  wrap.dataset.accent = 'eventos';
+
+  if(!Array.isArray(state.eventos)) state.eventos = [];
+  const evento = eventosOpenId ? state.eventos.find(e => e.id === eventosOpenId) : null;
+
+  if(evento){
+    buildEventoDetail(wrap, evento);
+  } else {
+    eventosOpenId = null;
+    buildEventosList(wrap);
+  }
+  return wrap;
+}
+
+function buildEventosList(wrap){
+  const eventos = state.eventos.slice().sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
+
+  wrap.innerHTML = `
+    <div class="board-head">
+      <div class="board-head-left">
+        <h2><span class="badge-swatch"></span>📅 Planejamento de Eventos</h2>
+        <p>Cada evento tem seu próprio espaço para checklist e cronograma interno — crie um quadro para cada curso ou evento que você estiver coordenando.</p>
+      </div>
+      <div class="board-tools">
+        <button class="btn primary" id="evtNewBtn">+ Novo evento</button>
+      </div>
+    </div>
+    <div class="evt-grid" id="evtGrid"></div>
+  `;
+
+  const grid = wrap.querySelector('#evtGrid');
+  if(eventos.length === 0){
+    grid.innerHTML = `<div class="evt-empty">Nenhum evento cadastrado ainda. Clique em "+ Novo evento" para começar.</div>`;
+  } else {
+    grid.innerHTML = eventos.map(ev => {
+      const st = eventoStatusInfo(ev.status);
+      const { done, total } = eventoProgress(ev);
+      const pct = total ? Math.round(done/total*100) : 0;
+      const meta = [ev.dataEvento ? fmtDate(ev.dataEvento) : '', ev.local].filter(Boolean).join(' · ');
+      return `
+        <div class="evt-card" data-evtopen="${ev.id}">
+          <div class="evt-card-top">
+            <h4 class="evt-card-title">${escapeHtml(ev.nome || 'Evento sem nome')}</h4>
+            <button class="evt-card-del" data-evtdel="${ev.id}" aria-label="Excluir evento" title="Excluir evento">✕</button>
+          </div>
+          <span class="evt-status-badge" style="background:${st.color}22; color:${st.color};">${escapeHtml(st.label)}</span>
+          <div class="evt-card-meta">${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div>
+          <div class="checklist-progress">
+            <div class="bar"><div style="width:${pct}%;"></div></div>
+            <span>${done}/${total}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  wrap.querySelector('#evtNewBtn').addEventListener('click', () => {
+    const ev = freshEvento();
+    state.eventos.push(ev);
+    eventosOpenId = ev.id;
+    saveData(true);
+    renderTabs();
+    renderMain();
+    requestAnimationFrame(() => {
+      const inp = document.getElementById('evtNome');
+      if(inp){ inp.focus(); inp.select(); }
+    });
+  });
+  grid.querySelectorAll('[data-evtopen]').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if(e.target.closest('[data-evtdel]')) return;
+      eventosOpenId = card.dataset.evtopen;
+      renderMain();
+    });
+  });
+  grid.querySelectorAll('[data-evtdel]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = e.currentTarget.dataset.evtdel;
+      const ev = state.eventos.find(x => x.id === id);
+      const ok = await customConfirm(`Excluir o evento "${ev ? (ev.nome||'sem nome') : ''}"? Essa ação não pode ser desfeita.`, { confirmLabel:'Excluir' });
+      if(!ok) return;
+      state.eventos = state.eventos.filter(x => x.id !== id);
+      saveData(true);
+      renderTabs();
+      renderMain();
+    });
+  });
+}
+
+function buildEventoDetail(wrap, evento){
+  wrap.innerHTML = `
+    <div class="board-head">
+      <div class="board-head-left">
+        <button class="btn small" id="evtBackBtn">← Voltar</button>
+      </div>
+    </div>
+    <div class="rel-form panel">
+      <div class="field-row">
+        <div class="field">
+          <label>Nome do evento</label>
+          <input type="text" id="evtNome" value="${escapeHtml(evento.nome||'')}" placeholder="Ex.: Curso de ACLS — Turma 14">
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="evtStatus">
+            ${EVENTO_STATUS.map(s => `<option value="${s.key}" ${evento.status===s.key?'selected':''}>${escapeHtml(s.label)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Data</label>
+          <input type="date" id="evtData" value="${escapeHtml(evento.dataEvento||'')}">
+        </div>
+        <div class="field">
+          <label>Horário</label>
+          <input type="text" id="evtHorario" value="${escapeHtml(evento.horario||'')}" placeholder="Ex.: 08h às 18h">
+        </div>
+        <div class="field">
+          <label>Local</label>
+          <input type="text" id="evtLocal" value="${escapeHtml(evento.local||'')}" placeholder="Ex.: Auditório — ITC Belo Horizonte">
+        </div>
+        <div class="field">
+          <label>Responsável geral</label>
+          <input type="text" id="evtResp" value="${escapeHtml(evento.responsavelGeral||'')}" placeholder="Nome do coordenador">
+        </div>
+      </div>
+
+      <div class="subsection">
+        <h5><span>Dados-chave</span></h5>
+        <div class="rel-items-table-wrap scrollbar">
+          <table class="rel-items-table ret-table" id="evtDadosChaveTable"></table>
+        </div>
+        <button class="btn small" id="evtAddDadoBtn" type="button">+ Adicionar campo</button>
+      </div>
+
+      <div class="subsection">
+        <h5><span>Checklist do evento</span></h5>
+        <div id="evtChecklistHost"></div>
+        <div class="add-row" style="margin-top:4px;">
+          <input type="text" id="evtNewGroupText" placeholder="Nome do novo grupo (ex.: Transporte, Credenciamento…)" maxlength="80">
+          <button type="button" id="evtAddGroupBtn">+ Grupo</button>
+        </div>
+      </div>
+
+      <div class="subsection">
+        <h5><span>Cronograma interno</span></h5>
+        <div class="rel-items-table-wrap scrollbar">
+          <table class="rel-items-table ret-table" id="evtCronTable"></table>
+        </div>
+        <button class="btn small" id="evtAddCronBtn" type="button">+ Adicionar linha</button>
+      </div>
+
+      <div class="rel-form-actions">
+        <button class="btn danger small" id="evtDeleteBtn">Excluir evento</button>
+      </div>
+    </div>
+  `;
+
+  const touch = () => { evento.updatedAt = Date.now(); };
+
+  wrap.querySelector('#evtBackBtn').addEventListener('click', () => {
+    eventosOpenId = null;
+    renderMain();
+  });
+  wrap.querySelector('#evtNome').addEventListener('change', (e) => { evento.nome = e.target.value; touch(); saveData(true); });
+  wrap.querySelector('#evtStatus').addEventListener('change', (e) => { evento.status = e.target.value; touch(); saveData(true); });
+  wrap.querySelector('#evtData').addEventListener('change', (e) => { evento.dataEvento = e.target.value; touch(); saveData(true); });
+  wrap.querySelector('#evtHorario').addEventListener('change', (e) => { evento.horario = e.target.value; touch(); saveData(true); });
+  wrap.querySelector('#evtLocal').addEventListener('change', (e) => { evento.local = e.target.value; touch(); saveData(true); });
+  wrap.querySelector('#evtResp').addEventListener('change', (e) => { evento.responsavelGeral = e.target.value; touch(); saveData(true); });
+
+  const dadosChaveCols = [
+    { key:'label', label:'Campo', placeholder:'Nome do campo' },
+    { key:'valor', label:'Valor', placeholder:'Preencha aqui' },
+  ];
+  const dadosChaveTable = wrap.querySelector('#evtDadosChaveTable');
+  renderItemsEditTable(dadosChaveTable, evento.dadosChave, dadosChaveCols, () => { touch(); });
+  wrap.querySelector('#evtAddDadoBtn').addEventListener('click', () => {
+    evento.dadosChave.push({ id: uid(), label:'', valor:'' });
+    touch();
+    saveData(true);
+    renderItemsEditTable(dadosChaveTable, evento.dadosChave, dadosChaveCols, () => { touch(); });
+  });
+
+  const checklistHost = wrap.querySelector('#evtChecklistHost');
+  renderEventoChecklist(checklistHost, evento);
+  wrap.querySelector('#evtAddGroupBtn').addEventListener('click', () => {
+    const inp = wrap.querySelector('#evtNewGroupText');
+    const titulo = inp.value.trim();
+    if(!titulo) return;
+    evento.checklistGroups.push({ id: uid(), titulo, itens: [] });
+    inp.value = '';
+    touch();
+    saveData(true);
+    renderEventoChecklist(checklistHost, evento);
+  });
+  wrap.querySelector('#evtNewGroupText').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); wrap.querySelector('#evtAddGroupBtn').click(); }
+  });
+
+  const cronCols = [
+    { key:'feito', label:'Feito', type:'checkbox' },
+    { key:'cor', label:'Cor', type:'color', options: TEMPOS_ROW_COLORS },
+    { key:'fase', label:'Fase', placeholder:'Ex.: Véspera' },
+    { key:'horario', label:'Horário', type:'time', placeholder:'' },
+    { key:'atividade', label:'Atividade', placeholder:'O que acontece' },
+    { key:'responsavel', label:'Responsável', placeholder:'Quem conduz' },
+    { key:'obs', label:'Observações', placeholder:'Opcional' },
+  ];
+  const cronTable = wrap.querySelector('#evtCronTable');
+  renderItemsEditTable(cronTable, evento.cronograma, cronCols, () => { touch(); });
+  wrap.querySelector('#evtAddCronBtn').addEventListener('click', () => {
+    evento.cronograma.push({ id: uid(), feito:false, cor:'', fase:'', horario:'', atividade:'', responsavel:'', obs:'' });
+    touch();
+    saveData(true);
+    renderItemsEditTable(cronTable, evento.cronograma, cronCols, () => { touch(); });
+  });
+
+  wrap.querySelector('#evtDeleteBtn').addEventListener('click', async () => {
+    const ok = await customConfirm(`Excluir o evento "${evento.nome||'sem nome'}"? Essa ação não pode ser desfeita.`, { confirmLabel:'Excluir' });
+    if(!ok) return;
+    state.eventos = state.eventos.filter(x => x.id !== evento.id);
+    eventosOpenId = null;
+    saveData(true);
+    renderTabs();
+    renderMain();
+  });
+}
+
+function renderEventoChecklist(host, evento){
+  const groups = evento.checklistGroups || [];
+
+  host.innerHTML = (groups.map(g => {
+    const done = (g.itens||[]).filter(i => i.done).length;
+    const total = (g.itens||[]).length;
+    const pct = total ? Math.round(done/total*100) : 0;
+    return `
+      <div class="evt-checklist-group" data-gid="${g.id}">
+        <div class="evt-group-head">
+          <input type="text" class="evt-group-title" value="${escapeHtml(g.titulo||'')}" data-gtitle="${g.id}" maxlength="80">
+          <button type="button" class="evt-group-del" data-gdel="${g.id}" aria-label="Remover grupo" title="Remover grupo">✕</button>
+        </div>
+        <div class="checklist-progress">
+          <div class="bar"><div style="width:${pct}%;"></div></div>
+          <span>${done}/${total}</span>
+        </div>
+        ${(g.itens||[]).map(it => `
+          <div class="check-item ${it.done?'done':''}">
+            <input type="checkbox" ${it.done?'checked':''} data-gchk="${g.id}|${it.id}">
+            <input type="text" value="${escapeHtml(it.texto||'')}" data-gtxt="${g.id}|${it.id}" maxlength="160">
+            <button data-girm="${g.id}|${it.id}" aria-label="Remover item">✕</button>
+          </div>
+        `).join('')}
+        <div class="add-row">
+          <input type="text" data-gnew="${g.id}" placeholder="Novo item do checklist…" maxlength="160">
+          <button type="button" data-gaddbtn="${g.id}">+ Item</button>
+        </div>
+      </div>
+    `;
+  }).join('')) || `<div class="evt-empty">Nenhum grupo de checklist ainda. Use o campo abaixo para criar o primeiro.</div>`;
+
+  const touch = () => { evento.updatedAt = Date.now(); };
+  const findGroup = (gid) => groups.find(g => g.id === gid);
+
+  host.querySelectorAll('[data-gtitle]').forEach(inp => {
+    inp.addEventListener('change', (e) => {
+      const g = findGroup(e.target.dataset.gtitle);
+      if(!g) return;
+      g.titulo = e.target.value;
+      touch();
+      saveData(true);
+    });
+  });
+  host.querySelectorAll('[data-gdel]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const gid = e.currentTarget.dataset.gdel;
+      const g = findGroup(gid);
+      const ok = await customConfirm(`Remover o grupo "${g ? (g.titulo||'sem nome') : ''}" e todos os seus itens?`, { confirmLabel:'Remover grupo' });
+      if(!ok) return;
+      evento.checklistGroups = evento.checklistGroups.filter(x => x.id !== gid);
+      touch();
+      saveData(true);
+      renderEventoChecklist(host, evento);
+    });
+  });
+  host.querySelectorAll('[data-gchk]').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const [gid, iid] = e.target.dataset.gchk.split('|');
+      const g = findGroup(gid);
+      const it = g && (g.itens||[]).find(i => i.id === iid);
+      if(!it) return;
+      it.done = e.target.checked;
+      touch();
+      saveData(true);
+      renderEventoChecklist(host, evento);
+    });
+  });
+  host.querySelectorAll('[data-gtxt]').forEach(inp => {
+    inp.addEventListener('change', (e) => {
+      const [gid, iid] = e.target.dataset.gtxt.split('|');
+      const g = findGroup(gid);
+      const it = g && (g.itens||[]).find(i => i.id === iid);
+      if(!it) return;
+      it.texto = e.target.value;
+      touch();
+      saveData(true);
+    });
+  });
+  host.querySelectorAll('[data-girm]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const [gid, iid] = e.currentTarget.dataset.girm.split('|');
+      const g = findGroup(gid);
+      if(!g) return;
+      g.itens = (g.itens||[]).filter(i => i.id !== iid);
+      touch();
+      saveData(true);
+      renderEventoChecklist(host, evento);
+    });
+  });
+  host.querySelectorAll('[data-gaddbtn]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const gid = e.currentTarget.dataset.gaddbtn;
+      const g = findGroup(gid);
+      const inp = host.querySelector(`[data-gnew="${gid}"]`);
+      const texto = inp.value.trim();
+      if(!g || !texto) return;
+      g.itens = g.itens || [];
+      g.itens.push({ id: uid(), texto, done:false });
+      inp.value = '';
+      touch();
+      saveData(true);
+      renderEventoChecklist(host, evento);
+    });
+  });
+  host.querySelectorAll('[data-gnew]').forEach(inp => {
+    inp.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        host.querySelector(`[data-gaddbtn="${e.target.dataset.gnew}"]`).click();
+      }
+    });
+  });
+}
+
 /* ---------- Relatórios do Setor ---------- */
 const REPORT_TYPES = [
   { id:'utilizacao', label:'Relatório Final de Utilização', icon:'📋' },
@@ -2815,19 +3411,24 @@ function renderItemsEditTable(tableEl, items, columns, onMutate){
   `;
   const tbody = tableEl.querySelector('tbody');
   const colorCol = columns.find(c => c.type === 'color');
+  const checkCols = columns.filter(c => c.type === 'checkbox');
   tbody.innerHTML = items.map((item, idx) => {
     let rowStyle = '';
     if(colorCol){
       const opt = (colorCol.options || []).find(o => o.key === (item[colorCol.key] || ''));
       if(opt && opt.hex) rowStyle = ` style="background:${opt.hex};"`;
     }
+    const rowClass = checkCols.some(c => item[c.key]) ? ' class="row-done"' : '';
     return `
-    <tr data-id="${item.id}"${rowStyle}>
+    <tr data-id="${item.id}"${rowClass}${rowStyle}>
       <td class="rel-item-num">${idx+1}</td>
       ${columns.map(c => {
         if(c.type === 'color'){
           const opts = c.options || [];
           return `<td class="rel-color-cell">${opts.map(o => `<button type="button" class="rel-color-swatch ${(item[c.key]||'')===o.key?'active':''} ${o.key?'':'rel-color-none'}" data-colorset="${item.id}" data-colorkey="${c.key}" data-colorval="${o.key}" title="${escapeHtml(o.label)}" style="${o.hex?`background:${o.hex};`:''}">${o.key?'':'✕'}</button>`).join('')}</td>`;
+        }
+        if(c.type === 'checkbox'){
+          return `<td class="rel-check-cell"><input type="checkbox" data-fcheck="${c.key}" ${item[c.key]?'checked':''}></td>`;
         }
         return `<td><input type="${c.type||'text'}" data-f="${c.key}" value="${escapeHtml(item[c.key]||'')}" placeholder="${escapeHtml(c.placeholder||'')}"></td>`;
       }).join('')}
@@ -2836,7 +3437,7 @@ function renderItemsEditTable(tableEl, items, columns, onMutate){
   `;
   }).join('');
 
-  tbody.querySelectorAll('input').forEach(inp => {
+  tbody.querySelectorAll('input[data-f]').forEach(inp => {
     inp.addEventListener('change', (e) => {
       const tr = e.target.closest('tr');
       const item = items.find(i => i.id === tr.dataset.id);
@@ -2846,6 +3447,17 @@ function renderItemsEditTable(tableEl, items, columns, onMutate){
       if(typeof onMutate === 'function') needsRedraw = !!onMutate(item, e.target.dataset.f);
       saveData(true);
       if(needsRedraw) renderItemsEditTable(tableEl, items, columns, onMutate);
+    });
+  });
+  tbody.querySelectorAll('input[data-fcheck]').forEach(inp => {
+    inp.addEventListener('change', (e) => {
+      const tr = e.target.closest('tr');
+      const item = items.find(i => i.id === tr.dataset.id);
+      if(!item) return;
+      item[e.target.dataset.fcheck] = e.target.checked;
+      if(typeof onMutate === 'function') onMutate(item, e.target.dataset.fcheck);
+      saveData(true);
+      renderItemsEditTable(tableEl, items, columns, onMutate);
     });
   });
   tbody.querySelectorAll('[data-colorset]').forEach(btn => {
@@ -4454,7 +5066,7 @@ async function init(){
     const ok = await customConfirm('Apagar TODOS os dados salvos neste navegador (e na nuvem)? Essa ação não pode ser desfeita. As abas do menu são mantidas — só os cartões são apagados.', { confirmLabel:'Apagar tudo' });
     if(ok){
       const keepSections = (state && Array.isArray(state.sectionsConfig) && state.sectionsConfig.length) ? state.sectionsConfig : cloneDefaultSections();
-      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null}, reportUiType:'utilizacao' };
+      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], eventos:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null}, reportUiType:'utilizacao' };
       rebuildSectionsRuntime();
       saveData(true);
       renderTabs(); renderMain();

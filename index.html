@@ -1040,8 +1040,8 @@ const TIP_DISMISS_KEY = 'kefraya_anatomia_tip_dismissed_v1';
    veja o passo a passo no README.md desta pasta. Sem eles preenchidos,
    o app continua funcionando normalmente, só que cada navegador guarda
    os dados sozinho, sem compartilhar com mais ninguém. */
-const SUPABASE_URL = https://pbguotfgbbzghczsjgpg.supabase.co;
-const SUPABASE_ANON_KEY = sb_publishable_gGAqmyT2giQCpojrEvRj4A_vEocvh2u;
+const SUPABASE_URL = 'https://pbguotfgbbzghczsjgpg.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_gGAqmyT2giQCpojrEvRj4A_vEocvh2u';
 const BOARD_ROW_ID = 'kefraya-anatomia';
 
 /* ---------- Section configuration ---------- */
@@ -4395,13 +4395,6 @@ function pdfTextBytes(str){
   }
   return out;
 }
-function pdfCharWidthFactor(ch){
-  if('ijlI.,;:\'!| \t'.includes(ch)) return 0.28;
-  if('mwMW@%'.includes(ch)) return 0.85;
-  if(ch >= '0' && ch <= '9') return 0.56;
-  if(ch >= 'A' && ch <= 'Z') return 0.66;
-  return 0.50;
-}
 // --- Fonte própria do documento (Protocolo de Transporte) ---
 // Caracteres que a fonte embutida não tem viram um equivalente simples.
 const PDF_DOC_FONT_SUBS = { '²':'2', '³':'3', '¹':'1', '½':'1/2', '¼':'1/4', '¾':'3/4', '±':'+/-', 'µ':'u', '¬':'-', '­':'-', '¦':'|', 'ƒ':'f', '†':'+', '‡':'+', '¤':'?' };
@@ -4417,17 +4410,13 @@ function pdfDocCharWidth(ch, bold){
   else b = 0x3F;
   return (b >= 32 ? (f.w[b-32] || 0) : 0) / 1000;
 }
-// opts.font === 'doc' → medidas exatas da fonte embutida (opts.bold = negrito).
-// Sem opts → estimativa antiga, usada pelos outros relatórios (Helvetica padrão).
+// Medidas exatas da fonte embutida, usada em TODOS os PDFs do app.
+// opts.bold = texto em negrito.
 function pdfTextWidth(str, fontSize, opts){
-  const s = String(str);
+  const t = pdfDocFontText(String(str));
+  const bold = !!(opts && opts.bold);
   let w = 0;
-  if(opts && opts.font === 'doc'){
-    const t = pdfDocFontText(s);
-    for(const ch of t) w += pdfDocCharWidth(ch, !!opts.bold) * fontSize;
-    return w;
-  }
-  for(const ch of s) w += pdfCharWidthFactor(ch) * fontSize;
+  for(const ch of t) w += pdfDocCharWidth(ch, bold) * fontSize;
   return w;
 }
 function pdfWrapText(str, maxWidth, fontSize, opts){
@@ -4459,11 +4448,11 @@ function pdfWrapText(str, maxWidth, fontSize, opts){
   return result.length ? result : [''];
 }
 
-function makePdfCtx(pageW, pageH, font){
+function makePdfCtx(pageW, pageH){
   const ops = [];
   const usedImages = new Set();
   return {
-    pageW, pageH, ops, usedImages, font: font || null,
+    pageW, pageH, ops, usedImages, font: 'doc',
     op(s){ ops.push(s); },
     image(key, x, y, w, h){
       const img = PDF_IMAGES[key];
@@ -4487,12 +4476,12 @@ function makePdfCtx(pageW, pageH, font){
       this.op('BT');
       this.op(`/${bold?'F2':'F1'} ${size} Tf`);
       this.op(`${x.toFixed(2)} ${(this.pageH - y).toFixed(2)} Td`);
-      this.op(`(${pdfTextBytes(this.font === 'doc' ? pdfDocFontText(str) : str)}) Tj`);
+      this.op(`(${pdfTextBytes(pdfDocFontText(str))}) Tj`);
       this.op('ET');
     },
     textRight(rightX,y,str,opts){
       const size = (opts&&opts.size)||9;
-      const w = pdfTextWidth(str, size, this.font === 'doc' ? { font:'doc', bold: !!(opts&&opts.bold) } : null);
+      const w = pdfTextWidth(str, size, { bold: !!(opts&&opts.bold) });
       this.text(rightX - w, y, str, opts);
     }
   };
@@ -4524,7 +4513,7 @@ function buildRetiradasPages(entries, monthYM, employeeName){
   }
 
   function drawTableHeader(y){
-    const wrappedLabels = cols.map(c => pdfWrapText(c.label, c.w - 8, 7.2));
+    const wrappedLabels = cols.map(c => pdfWrapText(c.label, c.w - 8, 7.2, { bold:true }));
     const maxLines = Math.max(1, ...wrappedLabels.map(w => w.length));
     const headH = maxLines * 9 + 9;
     ctx.setFill(226,242,250);
@@ -4612,7 +4601,7 @@ function buildRetiradasPages(entries, monthYM, employeeName){
   return { pages, pageW, pageH };
 }
 
-function assemblePdf(pagesOps, pageW, pageH, pagesImages, docFont){
+function assemblePdf(pagesOps, pageW, pageH, pagesImages){
   pagesImages = pagesImages || [];
   const objs = [];
   objs.push(null); // 1: catalog (filled below)
@@ -4620,9 +4609,9 @@ function assemblePdf(pagesOps, pageW, pageH, pagesImages, docFont){
   objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'); // 3
   objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'); // 4
 
-  // Documento com fonte própria: troca as duas fontes padrão (F1 regular, F2
-  // negrito) por TrueType embutida (subset WinAnsi, dados em PDF_DOC_FONT).
-  if(docFont){
+  // Todos os PDFs usam a mesma fonte: troca as duas fontes padrão (F1 regular,
+  // F2 negrito) por TrueType embutida (subset WinAnsi, dados em PDF_DOC_FONT).
+  {
     ['regular','bold'].forEach((k, i) => {
       const fd = PDF_DOC_FONT[k];
       const bin = atob(fd.b64);
@@ -4809,7 +4798,7 @@ function buildUtilizacaoReportPages(report){
   ];
 
   function drawTableHeader(){
-    const wrapped = cols.map(c => pdfWrapText(c.label, c.w-8, 7.4));
+    const wrapped = cols.map(c => pdfWrapText(c.label, c.w-8, 7.4, { bold:true }));
     const maxLines = Math.max(1, ...wrapped.map(w=>w.length));
     const hH = maxLines*9+8;
     ctx.setFill(...TEAL); ctx.fillRect(marginX, y, contentW, hH);
@@ -4850,7 +4839,7 @@ function buildUtilizacaoReportPages(report){
   // ocorrências
   if(y + 90 > bottomLimit) newPage();
   ctx.text(marginX, y, 'REGISTRO DE OCORRÊNCIAS', {bold:true, size:9.5, color:INK});
-  const label1w = pdfTextWidth('REGISTRO DE OCORRÊNCIAS', 9.5) * 1.15;
+  const label1w = pdfTextWidth('REGISTRO DE OCORRÊNCIAS', 9.5, { bold:true });
   ctx.text(marginX+label1w+10, y, '(se aplicável)', {size:8.5, color:INKSOFT});
   y += 12;
   const ocWrapped = pdfWrapText(report.ocorrencias || '', contentW-20, 9);
@@ -4874,7 +4863,7 @@ function buildUtilizacaoReportPages(report){
   checks.forEach(c => {
     drawCheckbox(ctx, cx, y-7, 8, c.checked);
     ctx.text(cx+13, y, c.label, {bold:true, size:8.5, color:INK});
-    cx += 13 + pdfTextWidth(c.label, 8.5) * 1.12 + 20;
+    cx += 13 + pdfTextWidth(c.label, 8.5, { bold:true }) + 20;
   });
   y += 18;
   ctx.text(marginX, y, 'Registro destinado à conferência e formalização interna da atividade realizada.', {size:8.5, color:INKSOFT});
@@ -5032,7 +5021,7 @@ function buildTermoPages(report){
   ];
 
   function drawTableHeader(){
-    const wrapped = cols.map(c => pdfWrapText(c.label, c.w-8, 7.4));
+    const wrapped = cols.map(c => pdfWrapText(c.label, c.w-8, 7.4, { bold:true }));
     const maxLines = Math.max(1, ...wrapped.map(w=>w.length));
     const hH = maxLines*9+8;
     ctx.setFill(...TEAL); ctx.fillRect(marginX, y, contentW, hH);
@@ -5224,7 +5213,7 @@ function buildTemposPages(report){
     { key:'dia', label:'DIA', w: 42 },
     { key:'horaInicio', label:'INÍCIO', w: 40 },
     { key:'horaFim', label:'FIM', w: 36 },
-    { key:'duracao', label:'DURAÇÃO', w: 46 },
+    { key:'duracao', label:'DURAÇÃO', w: 56 },
     { key:'atividade', label:'ATIVIDADE / INFORMAÇÕES', w: 0 }, // flex — completa a largura que sobrar
     { key:'equipe', label:'EQUIPE RESPONSÁVEL', w: 130 },
     { key:'local', label:'LOCAL', w: 105 },
@@ -5247,7 +5236,7 @@ function buildTemposPages(report){
   let chosen = null;
   for(const size of sizeCandidates){
     const lineH = size + 2.2;
-    const headWrapped = cols.map(c => pdfWrapText(c.label, c.w-6, size));
+    const headWrapped = cols.map(c => pdfWrapText(c.label, c.w-6, size, { bold:true }));
     const headLines = Math.max(1, ...headWrapped.map(w=>w.length));
     const headH = headLines*lineH + 6;
     const rowHeights = rows.map(it => {
@@ -5398,7 +5387,7 @@ function buildTransportePages(report, codigo){
   const pageW = 595.28, pageH = 841.89, marginX = 50;
   const contentW = pageW - marginX*2;
   const GREEN = [31,75,51], GREEN_PALE = [234,242,236], BLACK = [0,0,0], WHITE = [255,255,255];
-  const TF = { font:'doc' };
+  const TF = null;
   const BORDER = [222,230,225], BODY = [45,52,48], MUTED = [120,128,123], LABEL = [70,78,73];
   const labStr = transporteLabString(report);
   const totalPages = 5;
@@ -5419,7 +5408,7 @@ function buildTransportePages(report, codigo){
   }
 
   // ===================== PÁGINA 1 — Protocolo (capa) =====================
-  let ctx = makePdfCtx(pageW, pageH, 'doc');
+  let ctx = makePdfCtx(pageW, pageH);
   const pages = [ctx];
   drawHeader(ctx, 'Protocolo ITC · Nº 1');
   ctx.text(marginX, 122, 'Entrega de material biológico', {bold:true, size:19, color:GREEN});
@@ -5468,7 +5457,7 @@ function buildTransportePages(report, codigo){
     const rowH = 28;
     ctx.setFill(...GREEN_PALE); ctx.fillRect(marginX, y, contentW, rowH);
     const tag = `${r.label||'Destino'}${r.data ? ' ('+r.data+')' : ''}`;
-    const tagW = pdfTextWidth(tag, 8.5, { font:'doc', bold:true }) + 16;
+    const tagW = pdfTextWidth(tag, 8.5, { bold:true }) + 16;
     ctx.setFill(...GREEN); ctx.fillRect(marginX+8, y+6, tagW, 16);
     ctx.text(marginX+16, y+17, tag, {bold:true, size:8.5, color:[255,255,255]});
     ctx.text(marginX+24+tagW, y+18, r.endereco || '—', {size:10, color:BLACK});
@@ -5498,7 +5487,7 @@ function buildTransportePages(report, codigo){
   drawFooter(ctx, 1);
 
   // ===================== PÁGINA 2 — Lista de transporte =====================
-  ctx = makePdfCtx(pageW, pageH, 'doc'); pages.push(ctx);
+  ctx = makePdfCtx(pageW, pageH); pages.push(ctx);
   drawHeader(ctx, 'Controle Operacional · Nº 2');
   ctx.text(marginX, 122, 'Lista de transporte', {bold:true, size:19, color:GREEN});
   ctx.text(marginX, 140, `Identificação e conferência do conteúdo — anexo ao Protocolo ITC nº ${codigo}`, {size:9.5, color:MUTED});
@@ -5548,7 +5537,7 @@ function buildTransportePages(report, codigo){
   drawFooter(ctx, 2);
 
   // ===================== PÁGINA 3 — Declaração =====================
-  ctx = makePdfCtx(pageW, pageH, 'doc'); pages.push(ctx);
+  ctx = makePdfCtx(pageW, pageH); pages.push(ctx);
   drawHeader(ctx, 'Declaração · Nº 3');
   ctx.text(marginX, 122, 'Destinação e conformidade do material', {bold:true, size:18, color:GREEN});
   ctx.text(marginX, 140, 'MedCure Inc. · Treinamento e educação médica', {size:9.5, color:MUTED});
@@ -5622,7 +5611,7 @@ function buildTransportePages(report, codigo){
   drawFooter(ctx, 3);
 
   // ===================== PÁGINA 4 — Anexo I (certificado AATB, fixo) =====================
-  ctx = makePdfCtx(pageW, pageH, 'doc'); pages.push(ctx);
+  ctx = makePdfCtx(pageW, pageH); pages.push(ctx);
   drawHeader(ctx, 'Anexo I');
   ctx.text(marginX, 122, 'Documento de acreditação', {bold:true, size:18, color:GREEN});
   ctx.text(marginX, 140, 'American Association of Tissue Banks · Certificado de acreditação da MedCure, Inc.', {size:9.3, color:MUTED});
@@ -5633,7 +5622,7 @@ function buildTransportePages(report, codigo){
   drawFooter(ctx, 4);
 
   // ===================== PÁGINA 5 — Anexo II (carta AATB, fixa) =====================
-  ctx = makePdfCtx(pageW, pageH, 'doc'); pages.push(ctx);
+  ctx = makePdfCtx(pageW, pageH); pages.push(ctx);
   drawHeader(ctx, 'Anexo II');
   ctx.text(marginX, 122, 'Documento de acreditação', {bold:true, size:18, color:GREEN});
   ctx.text(marginX, 140, 'American Association of Tissue Banks · Carta de acompanhamento das unidades satélite', {size:9.3, color:MUTED});
@@ -5648,7 +5637,7 @@ function buildTransportePages(report, codigo){
 
 function generateTransportePdfBlob(report, codigo){
   const { pages, pageW, pageH } = buildTransportePages(report, codigo);
-  const pdfString = assemblePdf(pages.map(p=>p.ops), pageW, pageH, pages.map(p=>Array.from(p.usedImages)), true);
+  const pdfString = assemblePdf(pages.map(p=>p.ops), pageW, pageH, pages.map(p=>Array.from(p.usedImages)));
   return pdfStringToBlob(pdfString);
 }
 

@@ -757,6 +757,11 @@
   .rel-type-btn:hover{ background:var(--tint); color:var(--ink); }
   .rel-type-btn.active{ background:var(--tint); border-color:var(--accent); color:var(--ink); }
   .field-note{ font-weight:400; color:var(--ink-faint); }
+  .tr-unit-chips{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:-2px 0 10px; }
+  .tr-unit-chip{ display:inline-flex; align-items:stretch; border:1px solid var(--border, rgba(128,128,128,.35)); border-radius:999px; overflow:hidden; font-size:12px; }
+  .tr-unit-chip button{ background:transparent; border:0; color:inherit; font:inherit; cursor:pointer; padding:3px 9px; }
+  .tr-unit-chip button:hover{ background:rgba(128,128,128,.18); }
+  .tr-unit-chip .tr-unit-del{ padding:3px 7px; opacity:.6; border-left:1px solid var(--border, rgba(128,128,128,.35)); }
   .rel-declaration{
     font-size:13px; line-height:1.55; color:var(--ink); background:var(--canvas);
     border:1px solid var(--border-soft); border-radius:var(--radius); padding:12px 14px; margin:0 0 6px;
@@ -3359,7 +3364,9 @@ function freshTermoDraft(preserve){
 function freshTransporteDraft(preserve){
   preserve = preserve || {};
   return {
-    unidade: preserve.unidade || 'jds',
+    unidadeNome: (typeof preserve.unidadeNome === 'string') ? preserve.unidadeNome : 'JDS',
+    unidadeCnpj: (typeof preserve.unidadeCnpj === 'string') ? preserve.unidadeCnpj
+      : ((transporteFindUnit('JDS') || {}).cnpj || ''),
     dataEmissao: '',
     dataDeclaracao: '',
     rota: [{ id: uid(), label:'Destino', data:'', endereco:'' }],
@@ -3380,12 +3387,46 @@ function transporteManifestoOnChange(item, key){
   return false;
 }
 
+// ---- Unidades do Protocolo de Transporte (campo livre + lista salva) ----
+// A unidade é texto livre (ex.: "BH", "Recife"); as já usadas ficam numa lista
+// salva para escolher com 1 clique. O "ITC" é acrescentado automaticamente.
+function transporteUnidadesList(){
+  if(!Array.isArray(state.transporteUnidades)){
+    state.transporteUnidades = Object.keys(UNIT_SHORT_CODES).map(id => ({
+      id: uid(), nome: UNIT_SHORT_CODES[id],
+      cnpj: (state.unitInfo && state.unitInfo[id] && state.unitInfo[id].cnpj) || '',
+    }));
+  }
+  return state.transporteUnidades;
+}
+function transporteNormNome(s){ return String(s||'').replace(/^\s*ITC\b[\s\-–:]*/i, '').trim(); }
+function transporteFindUnit(nome){
+  const k = transporteNormNome(nome).toLowerCase();
+  if(!k) return null;
+  return transporteUnidadesList().find(u => String(u.nome).toLowerCase() === k) || null;
+}
+function transporteRememberUnit(nome, cnpj){
+  nome = transporteNormNome(nome);
+  if(!nome) return;
+  cnpj = String(cnpj||'').trim();
+  const u = transporteFindUnit(nome);
+  if(u){ if(cnpj) u.cnpj = cnpj; }
+  else transporteUnidadesList().push({ id: uid(), nome, cnpj });
+}
+// Registros/rascunhos antigos só tinham o id da unidade fixa (bh, jds…).
+function transporteUnitOf(rec){
+  if(typeof rec.unidadeNome === 'string') return { nome: transporteNormNome(rec.unidadeNome), cnpj: String(rec.unidadeCnpj||'').trim() };
+  return { nome: UNIT_SHORT_CODES[rec.unidade] || '', cnpj: (state.unitInfo && state.unitInfo[rec.unidade] && state.unitInfo[rec.unidade].cnpj) || '' };
+}
+function transporteEnsureDraftUnit(d){
+  if(typeof d.unidadeNome !== 'string'){ const u = transporteUnitOf(d); d.unidadeNome = u.nome; d.unidadeCnpj = u.cnpj; }
+  if(typeof d.unidadeCnpj !== 'string') d.unidadeCnpj = '';
+}
 // "ITC BH - 39.470.849/0001-64" — mesmo texto usado em 3 pontos diferentes
 // do protocolo (laboratório/destino, cliente e laboratório da declaração).
-function transporteLabString(unidade){
-  const sigla = UNIT_SHORT_CODES[unidade] || '';
-  const cnpj = (state.unitInfo[unidade] && state.unitInfo[unidade].cnpj) || '';
-  return `ITC ${sigla}${cnpj ? ' - ' + cnpj : ''}`;
+function transporteLabString(rec){
+  const u = transporteUnitOf(rec);
+  return `ITC${u.nome ? ' ' + u.nome : ''}${u.cnpj ? ' - ' + u.cnpj : ''}`;
 }
 
 // Paleta fixa de cores para destacar linhas-chave do cronograma (início
@@ -4135,7 +4176,8 @@ function renderTemposHistory(host){
 function buildTransporteSection(host){
   if(!state.reportDrafts.transporte) state.reportDrafts.transporte = freshTransporteDraft();
   const draft = state.reportDrafts.transporte;
-  const unitInfo = state.unitInfo[draft.unidade] || {};
+  transporteEnsureDraftUnit(draft);
+  const savedUnits = transporteUnidadesList();
   const nextCodigo = (draft.codigo != null) ? draft.codigo : (state.transporteCounter || 0) + 1;
 
   const rotaCols = [
@@ -4153,16 +4195,19 @@ function buildTransporteSection(host){
     <div class="rel-form panel">
       <div class="field-row">
         <div class="field">
-          <label>Unidade</label>
-          <select id="trUnidade">
-            ${Object.keys(UNIT_REPORT_LABELS).map(id => `<option value="${id}" ${draft.unidade===id?'selected':''}>ITC ${escapeHtml(UNIT_REPORT_LABELS[id])}</option>`).join('')}
-          </select>
+          <label>Unidade <span class="field-note">(o "ITC" entra sozinho — digite só o nome, ex.: BH)</span></label>
+          <input type="text" id="trUnidadeNome" value="${escapeHtml(draft.unidadeNome)}" placeholder="Ex.: BH, JDS, Recife…" autocomplete="off">
         </div>
         <div class="field">
-          <label>CNPJ da unidade <span class="field-note">(aparece como "ITC ${escapeHtml(UNIT_SHORT_CODES[draft.unidade]||'')} - CNPJ")</span></label>
-          <input type="text" id="trCnpj" value="${escapeHtml(unitInfo.cnpj||'')}" placeholder="00.000.000/0001-00">
+          <label>CNPJ da unidade</label>
+          <input type="text" id="trCnpj" value="${escapeHtml(draft.unidadeCnpj)}" placeholder="00.000.000/0001-00">
         </div>
       </div>
+      <div class="tr-unit-chips">
+        <span class="field-note">Unidades salvas:</span>
+        ${savedUnits.map(u => `<span class="tr-unit-chip"><button type="button" data-trunitpick="${u.id}" title="Usar esta unidade">${escapeHtml(u.nome)}</button><button type="button" class="tr-unit-del" data-trunitdel="${u.id}" title="Remover da lista" aria-label="Remover ${escapeHtml(u.nome)} da lista">✕</button></span>`).join('') || '<span class="field-note">nenhuma ainda — digite acima e ela fica salva.</span>'}
+      </div>
+      <p class="field-help" style="margin:-4px 0 8px;">Aparece no PDF como: <strong id="trLabPreview">${escapeHtml(transporteLabString(draft))}</strong></p>
 
       <p class="field-help" style="margin:-2px 0 8px;">Código do transporte: <strong>Nº ${nextCodigo}</strong> — atribuído sozinho, em ordem crescente, só no momento em que o PDF final é gerado.</p>
 
@@ -4210,12 +4255,40 @@ function buildTransporteSection(host){
     </div>
   `;
 
-  host.querySelector('#trUnidade').addEventListener('change', (e) => { draft.unidade = e.target.value; saveData(true); renderMain(); });
-  host.querySelector('#trCnpj').addEventListener('change', (e) => {
-    state.unitInfo[draft.unidade] = state.unitInfo[draft.unidade] || {};
-    state.unitInfo[draft.unidade].cnpj = e.target.value.trim();
+  const trPreview = () => { const el = host.querySelector('#trLabPreview'); if(el) el.textContent = transporteLabString(draft); };
+  host.querySelector('#trUnidadeNome').addEventListener('input', (e) => { draft.unidadeNome = e.target.value; trPreview(); });
+  host.querySelector('#trCnpj').addEventListener('input', (e) => { draft.unidadeCnpj = e.target.value; trPreview(); });
+  host.querySelector('#trUnidadeNome').addEventListener('change', (e) => {
+    draft.unidadeNome = transporteNormNome(e.target.value);
+    const found = transporteFindUnit(draft.unidadeNome);
+    if(found && found.cnpj && !String(draft.unidadeCnpj||'').trim()) draft.unidadeCnpj = found.cnpj;
+    transporteRememberUnit(draft.unidadeNome, draft.unidadeCnpj);
     saveData(true);
+    renderMain();
   });
+  host.querySelector('#trCnpj').addEventListener('change', (e) => {
+    draft.unidadeCnpj = e.target.value.trim();
+    transporteRememberUnit(draft.unidadeNome, draft.unidadeCnpj);
+    saveData(true);
+    renderMain();
+  });
+  host.querySelectorAll('[data-trunitpick]').forEach(btn => btn.addEventListener('click', () => {
+    const u = transporteUnidadesList().find(x => x.id === btn.dataset.trunitpick);
+    if(!u) return;
+    draft.unidadeNome = u.nome; draft.unidadeCnpj = u.cnpj || '';
+    saveData(true);
+    renderMain();
+  }));
+  host.querySelectorAll('[data-trunitdel]').forEach(btn => btn.addEventListener('click', async () => {
+    const u = transporteUnidadesList().find(x => x.id === btn.dataset.trunitdel);
+    if(!u) return;
+    const ok = await customConfirm(`Remover "${u.nome}" da lista de unidades salvas? Os protocolos já emitidos não são afetados.`, { confirmLabel:'Remover' });
+    if(ok){
+      state.transporteUnidades = transporteUnidadesList().filter(x => x.id !== u.id);
+      saveData(true);
+      renderMain();
+    }
+  }));
   host.querySelector('#trDataEmissao').addEventListener('change', (e) => { draft.dataEmissao = e.target.value; saveData(true); });
   host.querySelector('#trDataDeclaracao').addEventListener('change', (e) => { draft.dataDeclaracao = e.target.value; saveData(true); });
   host.querySelector('#trContato').addEventListener('change', (e) => { draft.contato = e.target.value; saveData(true); });
@@ -4239,7 +4312,7 @@ function buildTransporteSection(host){
   host.querySelector('#trClearBtn').addEventListener('click', async () => {
     const ok = await customConfirm('Limpar todos os campos do formulário? O histórico já emitido não será afetado.', { confirmLabel:'Limpar' });
     if(ok){
-      state.reportDrafts.transporte = freshTransporteDraft({ unidade: draft.unidade });
+      state.reportDrafts.transporte = freshTransporteDraft({ unidadeNome: draft.unidadeNome, unidadeCnpj: draft.unidadeCnpj });
       saveData(true);
       renderMain();
     }
@@ -4262,7 +4335,7 @@ function renderTransporteHistory(host){
     <div class="rel-history-item" data-id="${r.id}">
       <div class="rel-history-main">
         <strong>Protocolo ITC nº ${r.codigo != null ? r.codigo : '—'}</strong>
-        <div>ITC ${escapeHtml(UNIT_SHORT_CODES[r.unidade]||'')} · ${r.dataEmissao ? escapeHtml(fmtDate(r.dataEmissao)) : 'sem data'}</div>
+        <div>ITC ${escapeHtml(transporteUnitOf(r).nome)} · ${r.dataEmissao ? escapeHtml(fmtDate(r.dataEmissao)) : 'sem data'}</div>
       </div>
       <div class="rel-history-actions">
         <button class="btn small ghost" data-trload="${r.id}">↺ Carregar</button>
@@ -5285,7 +5358,7 @@ function buildTransportePages(report, codigo){
   const contentW = pageW - marginX*2;
   const GREEN = [31,75,51], GREEN_PALE = [234,242,236], RED = [205,20,15], YELLOW = [214,181,0];
   const BORDER = [222,230,225], BODY = [45,52,48], MUTED = [120,128,123], LABEL = [70,78,73];
-  const labStr = transporteLabString(report.unidade);
+  const labStr = transporteLabString(report);
   const totalPages = 5;
 
   function drawHeader(ctx, eyebrow){
@@ -5581,8 +5654,11 @@ async function exportTransportePDF(report, opts){
       record.id = uid();
       record.codigo = codigo;
       record.createdAt = Date.now();
+      transporteEnsureDraftUnit(record);
+      record.unidadeNome = transporteNormNome(record.unidadeNome);
       state.reports.transporte.push(record);
-      state.reportDrafts.transporte = freshTransporteDraft({ unidade: report.unidade });
+      transporteRememberUnit(record.unidadeNome, record.unidadeCnpj);
+      state.reportDrafts.transporte = freshTransporteDraft({ unidadeNome: record.unidadeNome, unidadeCnpj: record.unidadeCnpj });
       saveData(true);
       renderTabs();
       renderMain();

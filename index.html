@@ -802,37 +802,90 @@
   .rel-items-table tr.row-done td{ opacity:.55; }
   .rel-items-table tr.row-done input[type=text]{ text-decoration:line-through; }
 
-  /* ---------- Planejamento de Eventos ---------- */
-  .evt-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr)); gap:14px; }
-  .evt-card{
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
-    padding:14px; cursor:pointer; display:flex; flex-direction:column; gap:8px; transition:border-color .15s;
-  }
-  .evt-card:hover{ border-color:var(--accent); }
-  .evt-card-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
-  .evt-card-title{ font-family:var(--font-display); font-size:15px; font-weight:700; margin:0; line-height:1.3; }
-  .evt-card-meta{ font-size:12.5px; color:var(--ink-soft); display:flex; flex-direction:column; gap:2px; }
-  .evt-status-badge{
-    font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap;
-    font-family:var(--font-display); flex-shrink:0; align-self:flex-start;
-  }
-  .evt-card-del{ background:none; border:none; color:var(--ink-faint); cursor:pointer; padding:2px 4px; font-size:13px; flex-shrink:0; }
-  .evt-card-del:hover{ color:var(--red); }
+  /* ---------- To Do's (projetos e tarefas) ---------- */
   .evt-empty{
     grid-column:1/-1; color:var(--ink-faint); font-size:13.5px; padding:30px 10px; text-align:center;
     border:1.5px dashed var(--border); border-radius:var(--radius-lg);
   }
-  .evt-checklist-group{ border:1px solid var(--border-soft); border-radius:10px; padding:12px; margin-bottom:10px; }
-  .evt-checklist-group:last-child{ margin-bottom:0; }
-  .evt-group-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
-  .evt-group-title{
-    flex:1; min-width:0; border:1px solid transparent; background:transparent; font-family:var(--font-display);
-    font-size:13px; font-weight:700; color:var(--ink); padding:4px 6px; border-radius:6px;
+  .td-new{ margin-bottom:12px; }
+  .td-newproj-row{ margin-top:0; }
+  .td-newproj-row input{ flex:1; min-width:0; }
+  .td-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; margin:0 0 14px; font-size:12.5px; color:var(--ink-soft); }
+  .td-tool{ display:inline-flex; align-items:center; gap:7px; }
+  .td-tool select, .td-add-row select, .td-newproj-row select, .td-prio-sel{
+    font:inherit; font-size:12.5px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--ink);
   }
-  .evt-group-title:hover{ background:var(--surface-2); }
-  .evt-group-title:focus{ background:var(--canvas); border-color:var(--border); }
-  .evt-group-del{ background:none; border:none; color:var(--ink-faint); cursor:pointer; padding:3px 5px; flex-shrink:0; }
-  .evt-group-del:hover{ color:var(--red); }
+  .td-check{ cursor:pointer; user-select:none; }
+  .td-chips{ display:inline-flex; gap:6px; flex-wrap:wrap; }
+  .td-chip{
+    font:inherit; font-size:12px; font-weight:600; padding:5px 11px; border-radius:20px; cursor:pointer;
+    border:1px solid var(--border); background:var(--surface); color:var(--ink-soft);
+  }
+  .td-chip:hover{ border-color:var(--accent); }
+  .td-chip.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .td-summary{ margin-left:auto; color:var(--ink-faint); }
+  .td-summary .overdue, .overdue{ color:var(--red); }
+  .td-list{ display:flex; flex-direction:column; gap:12px; }
+  .td-proj{
+    background:var(--surface); border:1px solid var(--border); border-left:5px solid var(--c, var(--accent));
+    border-radius:var(--radius-lg); padding:10px 14px 12px;
+  }
+  .td-proj.complete{ opacity:.78; }
+  .td-proj.complete .td-proj-name{ text-decoration:line-through; text-decoration-color:var(--ink-faint); }
+  .td-proj-head{ display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; }
+  .td-collapse{ background:none; border:none; cursor:pointer; font-size:15px; color:var(--ink-soft); padding:2px 6px; }
+  .td-proj-name{
+    flex:1 1 200px; min-width:140px; border:1px solid transparent; background:transparent; color:var(--ink);
+    font-family:var(--font-display); font-size:16px; font-weight:700; padding:5px 7px; border-radius:7px;
+  }
+  .td-proj-name:hover{ background:var(--surface-2); }
+  .td-proj-name:focus{ background:var(--canvas); border-color:var(--border); outline:none; }
+  .td-prio-sel{ border-color:var(--c); color:var(--c); font-weight:700; }
+  .td-prazo-lbl{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-faint); }
+  .td-date{
+    font:inherit; font-size:12px; padding:4px 6px; border:1px solid var(--border); border-radius:7px; background:var(--surface); color:var(--ink);
+  }
+  .td-date.overdue{ border-color:var(--red); color:var(--red); }
+  .td-progress{ display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); min-width:96px; }
+  .td-progress .bar{ flex:1; height:6px; border-radius:4px; background:var(--surface-2); overflow:hidden; min-width:54px; }
+  .td-progress .bar > div{ height:100%; background:var(--green); border-radius:4px; }
+  .td-mini{ display:inline-flex; flex-direction:column; }
+  .td-mini button{ background:none; border:none; cursor:pointer; color:var(--ink-faint); font-size:9px; line-height:1.15; padding:0 5px; }
+  .td-mini button:hover{ color:var(--ink); }
+  .td-x{ background:none; border:none; color:var(--ink-faint); cursor:pointer; padding:3px 6px; font-size:13px; flex-shrink:0; }
+  .td-x:hover{ color:var(--red); }
+  .td-proj-body{ margin-top:8px; padding-left:4px; }
+  .td-tasks{ display:flex; flex-direction:column; }
+  .td-task{ display:flex; align-items:flex-start; gap:8px; padding:6px 2px; border-bottom:1px solid var(--border-soft); }
+  .td-task:last-child{ border-bottom:none; }
+  .td-chk{ width:18px; height:18px; margin-top:6px; accent-color:var(--green); cursor:pointer; flex-shrink:0; }
+  .td-task-text, .td-notes{
+    flex:1; min-width:0; resize:none; overflow:hidden; font:inherit; font-size:13.5px; line-height:1.4; color:var(--ink);
+    border:1px solid transparent; background:transparent; padding:5px 7px; border-radius:7px; field-sizing:content;
+  }
+  .td-task-text:hover, .td-notes:hover{ background:var(--surface-2); }
+  .td-task-text:focus, .td-notes:focus{ background:var(--canvas); border-color:var(--border); outline:none; }
+  .td-task.done .td-task-text{ text-decoration:line-through; color:var(--ink-faint); }
+  .td-task.done .td-prio-pill{ opacity:.45; }
+  .td-notes{ display:block; width:100%; border-color:var(--border-soft); background:var(--canvas); margin-bottom:6px; box-sizing:border-box; overflow:auto; }
+  .td-prio-pill{
+    font:inherit; font-size:10.5px; font-weight:700; padding:4px 10px; border-radius:20px; cursor:pointer; flex-shrink:0; margin-top:3px;
+    border:1px solid var(--c); color:var(--c); background:transparent; min-width:52px;
+  }
+  .td-prio-pill:hover{ background:var(--c); color:#fff; }
+  .td-task .td-date{ margin-top:3px; }
+  .td-empty-tasks, .td-hidden-note{ font-size:12.5px; color:var(--ink-faint); padding:8px 4px; }
+  .td-add-row{ display:flex; gap:7px; margin-top:8px; align-items:center; }
+  .td-add-row input[type=text]{
+    flex:1; min-width:0; font:inherit; font-size:13px; padding:8px 10px; border:1px dashed var(--border); border-radius:8px; background:var(--canvas); color:var(--ink);
+  }
+  .td-add-row input[type=text]:focus{ outline:none; border-style:solid; border-color:var(--accent); }
+  .td-proj-actions{ display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+  @media (max-width:640px){
+    .td-task{ flex-wrap:wrap; }
+    .td-task-text{ flex-basis:calc(100% - 40px); }
+    .td-summary{ margin-left:0; width:100%; }
+  }
   .rel-history-item{
     display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--border-soft); flex-wrap:wrap;
   }
@@ -1159,7 +1212,7 @@ function mkCard(opts){
 
 /* ---------- Seed data (transcrito do quadro anterior, como ponto de partida) ---------- */
 function seedData(){
-  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], eventos: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [], transporte: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null, transporte: null }, reportUiType: 'utilizacao', transporteCounter: 0 };
+  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], projetos: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [], transporte: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null, transporte: null }, reportUiType: 'utilizacao', transporteCounter: 0 };
   for(const s of DEFAULT_SECTIONS){
     data.sections[s.id] = {};
     for(const c of s.columns) data.sections[s.id][c.id] = [];
@@ -1385,46 +1438,32 @@ function normalizeState(data){
   for(const r of data.reports.transporte){
     if(typeof r.codigo === 'number' && r.codigo > data.transporteCounter) data.transporteCounter = r.codigo;
   }
-  if(!Array.isArray(data.eventos)) data.eventos = [];
-  for(const ev of data.eventos){
-    if(!ev.id) ev.id = uid();
-    ev.nome = ev.nome || '';
-    ev.local = ev.local || '';
-    ev.dataEvento = ev.dataEvento || '';
-    ev.horario = ev.horario || '';
-    ev.responsavelGeral = ev.responsavelGeral || '';
-    if(!EVENTO_STATUS.some(s => s.key === ev.status)) ev.status = 'planejamento';
-    if(!Array.isArray(ev.dadosChave)) ev.dadosChave = [];
-    for(const d of ev.dadosChave){
-      if(!d.id) d.id = uid();
-      d.label = d.label || '';
-      d.valor = d.valor || '';
+  // A aba antiga "Planejamento de Eventos" foi substituída pelos To Do's:
+  // os dados de eventos são descartados e o novo formato fica em data.projetos.
+  delete data.eventos;
+  if(!Array.isArray(data.projetos)) data.projetos = [];
+  const todoPrioKeys = ['alta','media','baixa'];
+  for(const p of data.projetos){
+    if(!p.id) p.id = uid();
+    p.nome = p.nome || '';
+    if(!todoPrioKeys.includes(p.prioridade)) p.prioridade = 'media';
+    p.prazo = p.prazo || '';
+    p.notas = p.notas || '';
+    p.notasAberto = !!p.notasAberto;
+    p.colapsado = !!p.colapsado;
+    if(!Array.isArray(p.tarefas)) p.tarefas = [];
+    for(const t of p.tarefas){
+      if(!t.id) t.id = uid();
+      t.texto = t.texto || '';
+      t.feito = !!t.feito;
+      if(!todoPrioKeys.includes(t.prioridade)) t.prioridade = 'media';
+      t.prazo = t.prazo || '';
+      if(t.doneAt === undefined) t.doneAt = null;
     }
-    if(!Array.isArray(ev.checklistGroups)) ev.checklistGroups = [];
-    for(const g of ev.checklistGroups){
-      if(!g.id) g.id = uid();
-      g.titulo = g.titulo || '';
-      if(!Array.isArray(g.itens)) g.itens = [];
-      for(const it of g.itens){
-        if(!it.id) it.id = uid();
-        it.texto = it.texto || '';
-        it.done = !!it.done;
-      }
-    }
-    if(!Array.isArray(ev.cronograma)) ev.cronograma = [];
-    for(const r of ev.cronograma){
-      if(!r.id) r.id = uid();
-      r.feito = !!r.feito;
-      r.cor = r.cor || '';
-      r.fase = r.fase || '';
-      r.horario = r.horario || '';
-      r.atividade = r.atividade || '';
-      r.responsavel = r.responsavel || '';
-      r.obs = r.obs || '';
-    }
-    if(!ev.createdAt) ev.createdAt = Date.now();
-    if(!ev.updatedAt) ev.updatedAt = Date.now();
+    if(!p.createdAt) p.createdAt = Date.now();
+    if(!p.updatedAt) p.updatedAt = Date.now();
   }
+  if(!data.todoPrefs || typeof data.todoPrefs !== 'object') data.todoPrefs = {};
   return data;
 }
 
@@ -1740,7 +1779,7 @@ function closeConfirm(result){
    As abas de quadro (ITC Belo Horizonte, Transportes, etc.) deixaram de
    ser uma lista fixa no código: agora moram em state.sectionsConfig,
    editável por aqui, sincronizada na nuvem como o resto do quadro. As
-   abas "Visão geral", "Planejamento de Eventos" e "Relatórios" continuam
+   abas "Visão geral", "To Do's" e "Relatórios" continuam
    fixas — têm telas próprias, não são quadros genéricos. */
 let sectionsEditingId = null; // id da aba em edição, '__new__' para uma aba nova, ou null
 
@@ -1960,7 +1999,7 @@ function renderTabs(){
   const items = [{ id:'dashboard', label:'Visão geral', icon:'▣' }, ...SECTIONS, EVENTOS_TAB, RELATORIOS_TAB];
   nav.innerHTML = items.map(s => {
     let count = '';
-    if(s.id === 'eventos') count = `<span class="tab-count">${(state.eventos||[]).length}</span>`;
+    if(s.id === 'eventos') count = `<span class="tab-count">${(state.projetos||[]).reduce((n, p) => n + (p.tarefas||[]).filter(t => !t.feito).length, 0)}</span>`;
     else if(s.id === 'relatorios') count = `<span class="tab-count">${(state.reports.utilizacao||[]).length + (state.reports.termo||[]).length + (state.reports.tempos||[]).length + (state.reports.transporte||[]).length}</span>`;
     else if(s.id !== 'dashboard') count = `<span class="tab-count">${countActive(s.id)}</span>`;
     return `<button class="tab-btn ${currentSectionId===s.id?'active':''}" data-accent="${s.id}" data-nav="${s.id}">
@@ -2813,521 +2852,369 @@ function renderRetTable(tableEl, entries){
   });
 }
 
-/* ---------- Planejamento de Eventos ---------- */
-const EVENTOS_TAB = { id:'eventos', label:'Planejamento de Eventos', short:'EVT', icon:'📅' };
+/* ---------- To Do's — gestão de projetos ----------
+   Cada projeto tem prioridade, prazo, anotações e uma lista de tarefas
+   (cada uma com check, prioridade e prazo próprios). Tudo fica em
+   state.projetos, sincronizado com o resto do quadro. O id interno da aba
+   continua "eventos" só por compatibilidade (cores/menu). */
+const EVENTOS_TAB = { id:'eventos', label:"To Do's", short:'TODO', icon:'✅' };
 
-const EVENTO_STATUS = [
-  { key:'planejamento', label:'Em planejamento', color:'#b99420' },
-  { key:'confirmado', label:'Confirmado', color:'#3d72d6' },
-  { key:'andamento', label:'Em andamento', color:'#1f9e5c' },
-  { key:'concluido', label:'Concluído', color:'#61758a' },
-  { key:'cancelado', label:'Cancelado', color:'#d9463c' },
+const TODO_PRIORIDADES = [
+  { key:'alta',  label:'Alta',  color:'#d9463c', rank:0 },
+  { key:'media', label:'Média', color:'#b6791a', rank:1 },
+  { key:'baixa', label:'Baixa', color:'#3d72d6', rank:2 },
 ];
-function eventoStatusInfo(key){
-  return EVENTO_STATUS.find(s => s.key === key) || EVENTO_STATUS[0];
+function todoPrio(key){ return TODO_PRIORIDADES.find(p => p.key === key) || TODO_PRIORIDADES[1]; }
+const TODO_SORTS = [
+  { key:'prioridade', label:'Prioridade' },
+  { key:'prazo', label:'Prazo' },
+  { key:'recentes', label:'Mais recentes' },
+  { key:'nome', label:'Nome (A–Z)' },
+  { key:'manual', label:'Manual (setas ▲ ▼)' },
+];
+
+function todoHoje(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function todoVencido(prazo, feito){ return !!prazo && !feito && prazo < todoHoje(); }
+
+function todoPrefs(){
+  if(!state.todoPrefs || typeof state.todoPrefs !== 'object') state.todoPrefs = {};
+  const p = state.todoPrefs;
+  if(!TODO_SORTS.some(s => s.key === p.ordenar)) p.ordenar = 'prioridade';
+  if(!['todos','andamento','concluidos'].includes(p.filtro)) p.filtro = 'todos';
+  p.ocultarConcluidas = !!p.ocultarConcluidas;
+  return p;
 }
 
-function defaultEventoDadosChave(){
-  return [
-    { id: uid(), label:'Data e horário do evento', valor:'' },
-    { id: uid(), label:'Local', valor:'' },
-    { id: uid(), label:'Responsável geral / coordenador', valor:'' },
-    { id: uid(), label:'Médico(s) / palestrante(s) envolvidos', valor:'' },
-    { id: uid(), label:'Procedimento / atividade principal', valor:'' },
-    { id: uid(), label:'Público estimado', valor:'' },
-    { id: uid(), label:'Formato (presencial, transmissão, híbrido)', valor:'' },
-  ];
+function freshTarefa(texto, prioridade){
+  return { id: uid(), texto: texto || '', feito:false, prioridade: todoPrio(prioridade).key, prazo:'', doneAt:null };
 }
-
-function defaultEventoChecklistGroups(){
-  const mk = (titulo, textos) => ({ id: uid(), titulo, itens: textos.map(t => ({ id: uid(), texto: t, done:false })) });
-  return [
-    mk('Planejamento, governança e documentação', [
-      'Definir objetivo, data e escopo do evento com a coordenação',
-      'Confirmar orçamento e responsáveis por cada frente',
-      'Levantar autorizações e documentos necessários (consentimentos, termos)',
-      'Alinhar cronograma geral com todos os envolvidos',
-      'Definir plano B para imprevistos (falta de peça, atraso, problema técnico)',
-      'Registrar e distribuir o checklist final para a equipe',
-    ]),
-    mk('Deslocamento e hospedagem da equipe', [
-      'Confirmar passagens/transporte da equipe envolvida',
-      'Reservar hospedagem, se necessário',
-      'Confirmar horários de chegada e saída de cada pessoa',
-      'Organizar transporte de equipamentos e materiais',
-      'Verificar alimentação da equipe durante o evento',
-      'Compartilhar roteiro/itinerário com todos os envolvidos',
-    ]),
-    mk('Reserva de salas e espaços', [
-      'Reservar sala principal do evento',
-      'Reservar sala de apoio / backstage',
-      'Confirmar capacidade e layout do espaço',
-      'Verificar climatização, iluminação e acústica',
-      'Confirmar acesso e horário de liberação do espaço',
-      'Sinalizar o espaço (placas, totens, identificação)',
-      'Checar disponibilidade de banheiros e áreas de apoio próximas',
-    ]),
-    mk('Transmissão: equipamentos e testes', [
-      'Confirmar equipamento de câmera(s)',
-      'Confirmar equipamento de áudio e microfones',
-      'Confirmar plataforma de transmissão (link, acesso)',
-      'Testar conexão de internet/link dedicado',
-      'Testar transmissão completa (dry run) com antecedência',
-      'Definir responsável técnico durante a transmissão',
-      'Preparar equipamento reserva (backup) de câmera e áudio',
-      'Checar iluminação da cena transmitida',
-      'Validar gravação local como backup da transmissão',
-      'Confirmar horário de abertura do sinal/transmissão',
-    ]),
-    mk('Equipamentos e instrumental', [
-      'Levantar lista de instrumentais necessários',
-      'Confirmar esterilização e validade dos materiais',
-      'Confirmar equipamentos específicos do procedimento',
-      'Verificar quantidade suficiente para toda a atividade',
-      'Organizar transporte dos equipamentos até o local',
-      'Checar funcionamento de todos os equipamentos antes do início',
-      'Definir responsável pela guarda e conferência dos equipamentos',
-      'Separar material de reposição/contingência',
-      'Confirmar recolhimento e devolução dos equipamentos após o evento',
-      'Registrar saída e retorno dos itens (controle de patrimônio)',
-    ]),
-    mk('Preparo da peça / material e biossegurança', [
-      'Confirmar disponibilidade e identificação da(s) peça(s)',
-      'Checar condições de conservação da(s) peça(s)',
-      'Organizar transporte adequado (temperatura, embalagem)',
-      'Confirmar EPIs disponíveis para toda a equipe',
-      'Checar descarte adequado de resíduos durante e após o uso',
-      'Confirmar protocolo de biossegurança do local',
-      'Preparar bancada/mesa de trabalho conforme protocolo',
-      'Confirmar procedimento de devolução/descarte final da peça',
-    ]),
-    mk('Convidados, comunicação e cerimonial', [
-      'Confirmar lista de convidados/participantes',
-      'Enviar convites e confirmar presenças',
-      'Preparar material de apoio (apresentação, folders, crachás)',
-      'Definir recepção e credenciamento dos participantes',
-      'Alinhar abertura e condução do evento (mestre de cerimônia)',
-      'Preparar agradecimentos e encerramento',
-      'Organizar registro fotográfico do evento',
-      'Divulgar o evento nos canais apropriados',
-      'Confirmar horário e responsável pela recepção',
-    ]),
-    mk('Pós-evento', [
-      'Recolher e organizar todo o material e equipamento utilizado',
-      'Registrar feedback da equipe e dos participantes',
-      'Elaborar relatório final do evento',
-      'Arquivar gravações, fotos e documentos gerados',
-      'Agradecer formalmente aos envolvidos e parceiros',
-    ]),
-  ];
-}
-
-function defaultEventoCronograma(){
-  const vespera = [
-    'Deslocamento da equipe até o local',
-    'Check-in / hospedagem da equipe',
-    'Reconhecimento do local e dos espaços reservados',
-    'Testes de transmissão e equipamentos (dry run)',
-    'Organização e conferência do material para o dia seguinte',
-  ];
-  const dia = [
-    'Chegada da equipe e organização da sala',
-    'Montagem e testes finais de equipamentos',
-    'Preparo e conferência da(s) peça(s)/material',
-    'Abertura do sinal de transmissão',
-    'Recepção e credenciamento dos participantes',
-    'Abertura / boas-vindas',
-    'Início da atividade principal',
-    'Pausa / intervalo',
-    'Retomada da atividade principal',
-    'Perguntas e encerramento da parte técnica',
-    'Agradecimentos e encerramento oficial',
-    'Encerramento da transmissão',
-    'Organização final do espaço e recolhimento de equipamentos',
-    'Devolução/descarte da(s) peça(s) e materiais',
-  ];
-  const mk = (fase, atividades) => atividades.map(atividade => ({
-    id: uid(), feito:false, cor:'', fase, horario:'', atividade, responsavel:'', obs:'',
-  }));
-  return [...mk('Véspera', vespera), ...mk('Dia do evento', dia)];
-}
-
-function freshEvento(){
+function freshProjeto(nome, prioridade){
   const now = Date.now();
-  return {
-    id: uid(),
-    nome: '',
-    local: '',
-    dataEvento: '',
-    horario: '',
-    responsavelGeral: '',
-    status: 'planejamento',
-    dadosChave: defaultEventoDadosChave(),
-    checklistGroups: defaultEventoChecklistGroups(),
-    cronograma: defaultEventoCronograma(),
-    createdAt: now,
-    updatedAt: now,
+  return { id: uid(), nome: nome || '', prioridade: todoPrio(prioridade).key, prazo:'', notas:'', notasAberto:false, colapsado:false, tarefas:[], createdAt:now, updatedAt:now };
+}
+function projetoProgress(p){
+  const t = p.tarefas || [];
+  return { done: t.filter(x => x.feito).length, total: t.length };
+}
+function projetoConcluido(p){ const g = projetoProgress(p); return g.total > 0 && g.done === g.total; }
+
+function todoPassaFiltro(p){
+  const f = todoPrefs().filtro;
+  if(f === 'todos') return true;
+  return f === 'concluidos' ? projetoConcluido(p) : !projetoConcluido(p);
+}
+function todoProjetosOrdenados(){
+  const k = todoPrefs().ordenar;
+  const arr = state.projetos.map((p, i) => ({ p, i })).filter(x => todoPassaFiltro(x.p));
+  const prazoKey = p => p.prazo || '9999-99-99';
+  if(k !== 'manual'){
+    arr.sort((A, B) => {
+      const a = A.p, b = B.p;
+      const ca = projetoConcluido(a), cb = projetoConcluido(b);
+      if(ca !== cb) return ca ? 1 : -1; // concluídos sempre no fim
+      let r = 0;
+      const rk = todoPrio(a.prioridade).rank - todoPrio(b.prioridade).rank;
+      if(k === 'prioridade') r = rk || (prazoKey(a) < prazoKey(b) ? -1 : prazoKey(a) > prazoKey(b) ? 1 : 0);
+      else if(k === 'prazo') r = (prazoKey(a) < prazoKey(b) ? -1 : prazoKey(a) > prazoKey(b) ? 1 : 0) || rk;
+      else if(k === 'recentes') r = (b.updatedAt || 0) - (a.updatedAt || 0);
+      else if(k === 'nome') r = String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity:'base' });
+      return r || (A.i - B.i);
+    });
+  }
+  return arr.map(x => x.p);
+}
+
+function todoTaskHtml(t){
+  const pr = todoPrio(t.prioridade);
+  const venc = todoVencido(t.prazo, t.feito);
+  return `
+    <div class="td-task ${t.feito ? 'done' : ''}" data-tid="${t.id}">
+      <input type="checkbox" class="td-chk" data-act="ttoggle" ${t.feito ? 'checked' : ''} aria-label="Marcar tarefa como feita">
+      <textarea class="td-task-text" rows="1" data-act="ttext" maxlength="600" placeholder="O que precisa ser feito…">${escapeHtml(t.texto)}</textarea>
+      <button type="button" class="td-prio-pill" data-act="tprio" style="--c:${pr.color}" title="Clique para mudar a prioridade">${pr.label}</button>
+      <input type="date" class="td-date ${venc ? 'overdue' : ''}" data-act="tdate" value="${escapeHtml(t.prazo || '')}" title="Prazo da tarefa">
+      <span class="td-mini">
+        <button type="button" data-act="tup" title="Subir" aria-label="Subir tarefa">▲</button>
+        <button type="button" data-act="tdown" title="Descer" aria-label="Descer tarefa">▼</button>
+      </span>
+      <button type="button" class="td-x" data-act="tdel" title="Remover tarefa" aria-label="Remover tarefa">✕</button>
+    </div>`;
+}
+
+function todoProjectHtml(p, prefs){
+  const pr = todoPrio(p.prioridade);
+  const { done, total } = projetoProgress(p);
+  const pct = total ? Math.round(done / total * 100) : 0;
+  const concl = projetoConcluido(p);
+  const venc = todoVencido(p.prazo, concl);
+  const todas = p.tarefas || [];
+  const visiveis = todas.filter(t => !(prefs.ocultarConcluidas && t.feito));
+  const ocultas = todas.length - visiveis.length;
+  const manual = prefs.ordenar === 'manual';
+  const newPrio = prefs.novaPrio || 'media';
+
+  const head = `
+    <div class="td-proj-head">
+      <button type="button" class="td-collapse" data-act="pcollapse" aria-label="${p.colapsado ? 'Expandir' : 'Recolher'} projeto" title="${p.colapsado ? 'Expandir' : 'Recolher'}">${p.colapsado ? '▸' : '▾'}</button>
+      <input type="text" class="td-proj-name" data-act="pname" value="${escapeHtml(p.nome || '')}" maxlength="120" placeholder="Nome do projeto">
+      <select class="td-prio-sel" data-act="pprio" style="--c:${pr.color}" title="Prioridade do projeto">
+        ${TODO_PRIORIDADES.map(x => `<option value="${x.key}" ${p.prioridade === x.key ? 'selected' : ''}>Prioridade ${x.label.toLowerCase()}</option>`).join('')}
+      </select>
+      <label class="td-prazo-lbl ${venc ? 'overdue' : ''}" title="Prazo do projeto">Prazo
+        <input type="date" class="td-date ${venc ? 'overdue' : ''}" data-act="pdate" value="${escapeHtml(p.prazo || '')}">
+      </label>
+      <div class="td-progress" title="${done} de ${total} tarefas feitas">
+        <div class="bar"><div style="width:${pct}%;"></div></div>
+        <span>${done}/${total}</span>
+      </div>
+      ${manual ? `<span class="td-mini"><button type="button" data-act="pup" title="Subir projeto" aria-label="Subir projeto">▲</button><button type="button" data-act="pdown" title="Descer projeto" aria-label="Descer projeto">▼</button></span>` : ''}
+      <button type="button" class="td-x" data-act="pdel" title="Excluir projeto" aria-label="Excluir projeto">🗑</button>
+    </div>`;
+
+  let body = '';
+  if(!p.colapsado){
+    body = `
+      <div class="td-proj-body">
+        ${p.notasAberto ? `<textarea class="td-notes" rows="2" data-act="pnotes" maxlength="4000" placeholder="Anotações, contexto, links do projeto…">${escapeHtml(p.notas || '')}</textarea>` : ''}
+        <div class="td-tasks">
+          ${visiveis.length ? visiveis.map(todoTaskHtml).join('') : `<div class="td-empty-tasks">${todas.length ? 'Todas as tarefas estão concluídas e ocultas.' : 'Nenhuma tarefa ainda — escreva a primeira abaixo.'}</div>`}
+        </div>
+        ${ocultas ? `<div class="td-hidden-note">${ocultas} tarefa${ocultas > 1 ? 's' : ''} concluída${ocultas > 1 ? 's' : ''} oculta${ocultas > 1 ? 's' : ''}</div>` : ''}
+        <div class="td-add-row">
+          <input type="text" data-newtask="${p.id}" placeholder="Nova tarefa… (Enter para adicionar)" maxlength="600">
+          <select data-newprio="${p.id}" title="Prioridade da nova tarefa">
+            ${TODO_PRIORIDADES.map(x => `<option value="${x.key}" ${newPrio === x.key ? 'selected' : ''}>${x.label}</option>`).join('')}
+          </select>
+          <button type="button" class="btn small" data-act="taddbtn">+ Tarefa</button>
+        </div>
+        <div class="td-proj-actions">
+          <button type="button" class="btn small ghost" data-act="pnotesbtn">📝 Notas${p.notas ? ' •' : ''}</button>
+          <button type="button" class="btn small ghost" data-act="tsortprio" ${todas.length < 2 ? 'disabled' : ''}>⇅ Ordenar tarefas por prioridade</button>
+          <button type="button" class="btn small ghost" data-act="tclear" ${done ? '' : 'disabled'}>Limpar concluídas</button>
+        </div>
+      </div>`;
+  }
+  return `<section class="td-proj ${concl ? 'complete' : ''}" data-pid="${p.id}" style="--c:${pr.color}">${head}${body}</section>`;
+}
+
+function todoAutosize(root){
+  root.querySelectorAll('textarea').forEach(el => {
+    el.style.height = 'auto';
+    if(el.scrollHeight > 8) el.style.height = el.scrollHeight + 'px';
+  });
+}
+
+function todoRender(wrap, focusSel){
+  const prefs = todoPrefs();
+  const projetos = todoProjetosOrdenados();
+  const todos = state.projetos;
+  const abertas = todos.reduce((n, p) => n + (p.tarefas || []).filter(t => !t.feito).length, 0);
+  const atrasadas = todos.reduce((n, p) => n + (p.tarefas || []).filter(t => todoVencido(t.prazo, t.feito)).length, 0)
+    + todos.filter(p => todoVencido(p.prazo, projetoConcluido(p))).length;
+  const emAndamento = todos.filter(p => !projetoConcluido(p)).length;
+
+  wrap.innerHTML = `
+    <div class="board-head">
+      <div class="board-head-left">
+        <h2><span class="badge-swatch"></span>✅ To Do's</h2>
+        <p>Seus projetos, cada um com sua lista de tarefas. Marque o que já fez, defina a prioridade e o prazo, e reordene como preferir.</p>
+      </div>
+    </div>
+
+    <div class="panel td-new">
+      <div class="add-row td-newproj-row">
+        <input type="text" id="tdNewProjName" placeholder="Nome do novo projeto… (Enter para criar)" maxlength="120">
+        <select id="tdNewProjPrio" title="Prioridade do projeto">
+          ${TODO_PRIORIDADES.map(x => `<option value="${x.key}" ${x.key === 'media' ? 'selected' : ''}>Prioridade ${x.label.toLowerCase()}</option>`).join('')}
+        </select>
+        <button type="button" class="btn primary" data-act="paddbtn">+ Projeto</button>
+      </div>
+    </div>
+
+    <div class="td-toolbar">
+      <label class="td-tool">Ordenar por
+        <select data-act="sortsel">
+          ${TODO_SORTS.map(s => `<option value="${s.key}" ${prefs.ordenar === s.key ? 'selected' : ''}>${s.label}</option>`).join('')}
+        </select>
+      </label>
+      <div class="td-chips" role="group" aria-label="Filtrar projetos">
+        ${[['todos','Todos'],['andamento','Em andamento'],['concluidos','Concluídos']].map(([k, l]) => `<button type="button" class="td-chip ${prefs.filtro === k ? 'on' : ''}" data-act="filtro" data-filtro="${k}">${l}</button>`).join('')}
+      </div>
+      <label class="td-tool td-check"><input type="checkbox" data-act="hidedone" ${prefs.ocultarConcluidas ? 'checked' : ''}> Ocultar tarefas concluídas</label>
+      <span class="td-summary">${emAndamento} em andamento · ${abertas} tarefa${abertas === 1 ? '' : 's'} aberta${abertas === 1 ? '' : 's'}${atrasadas ? ` · <b class="overdue">${atrasadas} atrasada${atrasadas > 1 ? 's' : ''}</b>` : ''}</span>
+    </div>
+
+    <div class="td-list" id="tdList">
+      ${projetos.length ? projetos.map(p => todoProjectHtml(p, prefs)).join('') : `<div class="evt-empty">${todos.length ? 'Nenhum projeto neste filtro.' : 'Nenhum projeto ainda. Escreva o nome do primeiro projeto acima e pressione Enter.'}</div>`}
+    </div>
+  `;
+  todoAutosize(wrap);
+  if(focusSel){
+    const el = wrap.querySelector(focusSel);
+    if(el){ el.focus(); if(el.select && el.tagName === 'INPUT' && el.type === 'text' && !el.value) el.select(); }
+  }
+}
+
+function todoSwap(arr, id, dir, visible){
+  const i = arr.findIndex(x => x.id === id);
+  if(i < 0) return false;
+  let j = i + dir;
+  while(j >= 0 && j < arr.length && !visible(arr[j])) j += dir;
+  if(j < 0 || j >= arr.length) return false;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  return true;
+}
+
+function todoBindEvents(wrap){
+  const touch = (p) => { p.updatedAt = Date.now(); };
+  const find = (el) => {
+    const sec = el.closest('[data-pid]');
+    const p = sec ? state.projetos.find(x => x.id === sec.dataset.pid) : null;
+    const row = el.closest('[data-tid]');
+    const t = (p && row) ? (p.tarefas || []).find(x => x.id === row.dataset.tid) : null;
+    return { p, t };
   };
-}
+  const commit = (focusSel) => { saveData(true); renderTabs(); todoRender(wrap, focusSel); };
 
-function eventoProgress(evento){
-  let done = 0, total = 0;
-  (evento.checklistGroups || []).forEach(g => (g.itens || []).forEach(it => {
-    total++;
-    if(it.done) done++;
-  }));
-  return { done, total };
-}
+  function addProject(){
+    const inp = wrap.querySelector('#tdNewProjName');
+    const nome = inp.value.trim();
+    if(!nome){ inp.focus(); return; }
+    const prio = wrap.querySelector('#tdNewProjPrio').value;
+    const p = freshProjeto(nome, prio);
+    state.projetos.push(p);
+    if(todoPrefs().filtro === 'concluidos') state.todoPrefs.filtro = 'todos';
+    commit(`[data-newtask="${p.id}"]`);
+  }
+  function addTask(sec){
+    const p = state.projetos.find(x => x.id === sec.dataset.pid);
+    if(!p) return;
+    const inp = sec.querySelector('[data-newtask]');
+    const texto = inp.value.trim();
+    if(!texto){ inp.focus(); return; }
+    const prio = sec.querySelector('[data-newprio]').value;
+    state.todoPrefs.novaPrio = prio;
+    p.tarefas.push(freshTarefa(texto, prio));
+    touch(p);
+    commit(`[data-pid="${p.id}"] [data-newtask]`);
+  }
 
-let eventosOpenId = null; // id do evento aberto em detalhe nesta sessão, ou null para a lista
+  wrap.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if(!btn) return;
+    const act = btn.dataset.act;
+    const { p, t } = find(btn);
+    const prefs = todoPrefs();
+
+    if(act === 'paddbtn') return addProject();
+    if(act === 'filtro'){ prefs.filtro = btn.dataset.filtro; return commit(); }
+    if(!p) return;
+
+    if(act === 'taddbtn') return addTask(btn.closest('[data-pid]'));
+    if(act === 'pcollapse'){ p.colapsado = !p.colapsado; return commit(); }
+    if(act === 'pnotesbtn'){ p.notasAberto = !p.notasAberto; return commit(p.notasAberto ? `[data-pid="${p.id}"] .td-notes` : undefined); }
+    if(act === 'pup' || act === 'pdown'){
+      if(todoSwap(state.projetos, p.id, act === 'pup' ? -1 : 1, todoPassaFiltro)) commit();
+      return;
+    }
+    if(act === 'pdel'){
+      const ok = await customConfirm(`Excluir o projeto "${p.nome || 'sem nome'}" e todas as suas tarefas? Essa ação não pode ser desfeita.`, { confirmLabel:'Excluir' });
+      if(!ok) return;
+      state.projetos = state.projetos.filter(x => x.id !== p.id);
+      return commit();
+    }
+    if(act === 'tsortprio'){
+      const idx = new Map(p.tarefas.map((x, i) => [x.id, i]));
+      const abertas = p.tarefas.filter(x => !x.feito).sort((a, b) => (todoPrio(a.prioridade).rank - todoPrio(b.prioridade).rank) || (idx.get(a.id) - idx.get(b.id)));
+      const feitas = p.tarefas.filter(x => x.feito);
+      p.tarefas = [...abertas, ...feitas];
+      touch(p);
+      return commit();
+    }
+    if(act === 'tclear'){
+      const n = p.tarefas.filter(x => x.feito).length;
+      const ok = await customConfirm(`Remover ${n} tarefa${n > 1 ? 's' : ''} concluída${n > 1 ? 's' : ''} de "${p.nome || 'sem nome'}"?`, { confirmLabel:'Remover' });
+      if(!ok) return;
+      p.tarefas = p.tarefas.filter(x => !x.feito);
+      touch(p);
+      return commit();
+    }
+    if(!t) return;
+    if(act === 'tprio'){
+      const i = TODO_PRIORIDADES.findIndex(x => x.key === t.prioridade);
+      t.prioridade = TODO_PRIORIDADES[(i + 1) % TODO_PRIORIDADES.length].key;
+      touch(p);
+      return commit();
+    }
+    if(act === 'tup' || act === 'tdown'){
+      const vis = x => !(prefs.ocultarConcluidas && x.feito);
+      if(todoSwap(p.tarefas, t.id, act === 'tup' ? -1 : 1, vis)){ touch(p); commit(); }
+      return;
+    }
+    if(act === 'tdel'){
+      p.tarefas = p.tarefas.filter(x => x.id !== t.id);
+      touch(p);
+      return commit();
+    }
+  });
+
+  wrap.addEventListener('change', (e) => {
+    const el = e.target.closest('[data-act]');
+    if(!el) return;
+    const act = el.dataset.act;
+    const prefs = todoPrefs();
+    if(act === 'sortsel'){ prefs.ordenar = el.value; return commit(); }
+    if(act === 'hidedone'){ prefs.ocultarConcluidas = el.checked; return commit(); }
+    const { p, t } = find(el);
+    if(!p) return;
+    if(act === 'pname'){ p.nome = el.value.trim(); touch(p); saveData(true); return; }
+    if(act === 'pprio'){ p.prioridade = el.value; touch(p); return commit(); }
+    if(act === 'pdate'){ p.prazo = el.value; touch(p); return commit(); }
+    if(act === 'pnotes'){ p.notas = el.value; touch(p); saveData(true); return; }
+    if(!t) return;
+    if(act === 'ttoggle'){
+      t.feito = el.checked;
+      t.doneAt = t.feito ? Date.now() : null;
+      touch(p);
+      return commit();
+    }
+    if(act === 'ttext'){ t.texto = el.value.trim(); touch(p); saveData(true); return; }
+    if(act === 'tdate'){
+      t.prazo = el.value; touch(p); saveData(true);
+      el.classList.toggle('overdue', todoVencido(t.prazo, t.feito));
+      return;
+    }
+  });
+
+  wrap.addEventListener('input', (e) => {
+    if(e.target.matches('textarea')){
+      e.target.style.height = 'auto';
+      if(e.target.scrollHeight > 8) e.target.style.height = e.target.scrollHeight + 'px';
+    }
+  });
+
+  wrap.addEventListener('keydown', (e) => {
+    if(e.key !== 'Enter') return;
+    const el = e.target;
+    if(el.id === 'tdNewProjName'){ e.preventDefault(); addProject(); }
+    else if(el.matches('[data-newtask]')){ e.preventDefault(); addTask(el.closest('[data-pid]')); }
+    else if(el.matches('textarea[data-act="ttext"]') && !e.shiftKey){ e.preventDefault(); el.blur(); }
+    else if(el.matches('input[data-act="pname"]')){ e.preventDefault(); el.blur(); }
+  });
+}
 
 function buildEventos(){
   const wrap = document.createElement('div');
   wrap.className = 'view active';
   wrap.dataset.accent = 'eventos';
-
-  if(!Array.isArray(state.eventos)) state.eventos = [];
-  const evento = eventosOpenId ? state.eventos.find(e => e.id === eventosOpenId) : null;
-
-  if(evento){
-    buildEventoDetail(wrap, evento);
-  } else {
-    eventosOpenId = null;
-    buildEventosList(wrap);
-  }
+  if(!Array.isArray(state.projetos)) state.projetos = [];
+  todoBindEvents(wrap);
+  todoRender(wrap);
+  requestAnimationFrame(() => todoAutosize(wrap));
   return wrap;
-}
-
-function buildEventosList(wrap){
-  const eventos = state.eventos.slice().sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
-
-  wrap.innerHTML = `
-    <div class="board-head">
-      <div class="board-head-left">
-        <h2><span class="badge-swatch"></span>📅 Planejamento de Eventos</h2>
-        <p>Cada evento tem seu próprio espaço para checklist e cronograma interno — crie um quadro para cada curso ou evento que você estiver coordenando.</p>
-      </div>
-      <div class="board-tools">
-        <button class="btn primary" id="evtNewBtn">+ Novo evento</button>
-      </div>
-    </div>
-    <div class="evt-grid" id="evtGrid"></div>
-  `;
-
-  const grid = wrap.querySelector('#evtGrid');
-  if(eventos.length === 0){
-    grid.innerHTML = `<div class="evt-empty">Nenhum evento cadastrado ainda. Clique em "+ Novo evento" para começar.</div>`;
-  } else {
-    grid.innerHTML = eventos.map(ev => {
-      const st = eventoStatusInfo(ev.status);
-      const { done, total } = eventoProgress(ev);
-      const pct = total ? Math.round(done/total*100) : 0;
-      const meta = [ev.dataEvento ? fmtDate(ev.dataEvento) : '', ev.local].filter(Boolean).join(' · ');
-      return `
-        <div class="evt-card" data-evtopen="${ev.id}">
-          <div class="evt-card-top">
-            <h4 class="evt-card-title">${escapeHtml(ev.nome || 'Evento sem nome')}</h4>
-            <button class="evt-card-del" data-evtdel="${ev.id}" aria-label="Excluir evento" title="Excluir evento">✕</button>
-          </div>
-          <span class="evt-status-badge" style="background:${st.color}22; color:${st.color};">${escapeHtml(st.label)}</span>
-          <div class="evt-card-meta">${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div>
-          <div class="checklist-progress">
-            <div class="bar"><div style="width:${pct}%;"></div></div>
-            <span>${done}/${total}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  wrap.querySelector('#evtNewBtn').addEventListener('click', () => {
-    const ev = freshEvento();
-    state.eventos.push(ev);
-    eventosOpenId = ev.id;
-    saveData(true);
-    renderTabs();
-    renderMain();
-    requestAnimationFrame(() => {
-      const inp = document.getElementById('evtNome');
-      if(inp){ inp.focus(); inp.select(); }
-    });
-  });
-  grid.querySelectorAll('[data-evtopen]').forEach(card => {
-    card.addEventListener('click', (e) => {
-      if(e.target.closest('[data-evtdel]')) return;
-      eventosOpenId = card.dataset.evtopen;
-      renderMain();
-    });
-  });
-  grid.querySelectorAll('[data-evtdel]').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = e.currentTarget.dataset.evtdel;
-      const ev = state.eventos.find(x => x.id === id);
-      const ok = await customConfirm(`Excluir o evento "${ev ? (ev.nome||'sem nome') : ''}"? Essa ação não pode ser desfeita.`, { confirmLabel:'Excluir' });
-      if(!ok) return;
-      state.eventos = state.eventos.filter(x => x.id !== id);
-      saveData(true);
-      renderTabs();
-      renderMain();
-    });
-  });
-}
-
-function buildEventoDetail(wrap, evento){
-  wrap.innerHTML = `
-    <div class="board-head">
-      <div class="board-head-left">
-        <button class="btn small" id="evtBackBtn">← Voltar</button>
-      </div>
-    </div>
-    <div class="rel-form panel">
-      <div class="field-row">
-        <div class="field">
-          <label>Nome do evento</label>
-          <input type="text" id="evtNome" value="${escapeHtml(evento.nome||'')}" placeholder="Ex.: Curso de ACLS — Turma 14">
-        </div>
-        <div class="field">
-          <label>Status</label>
-          <select id="evtStatus">
-            ${EVENTO_STATUS.map(s => `<option value="${s.key}" ${evento.status===s.key?'selected':''}>${escapeHtml(s.label)}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Data</label>
-          <input type="date" id="evtData" value="${escapeHtml(evento.dataEvento||'')}">
-        </div>
-        <div class="field">
-          <label>Horário</label>
-          <input type="text" id="evtHorario" value="${escapeHtml(evento.horario||'')}" placeholder="Ex.: 08h às 18h">
-        </div>
-        <div class="field">
-          <label>Local</label>
-          <input type="text" id="evtLocal" value="${escapeHtml(evento.local||'')}" placeholder="Ex.: Auditório — ITC Belo Horizonte">
-        </div>
-        <div class="field">
-          <label>Responsável geral</label>
-          <input type="text" id="evtResp" value="${escapeHtml(evento.responsavelGeral||'')}" placeholder="Nome do coordenador">
-        </div>
-      </div>
-
-      <div class="subsection">
-        <h5><span>Dados-chave</span></h5>
-        <div class="rel-items-table-wrap scrollbar">
-          <table class="rel-items-table ret-table" id="evtDadosChaveTable"></table>
-        </div>
-        <button class="btn small" id="evtAddDadoBtn" type="button">+ Adicionar campo</button>
-      </div>
-
-      <div class="subsection">
-        <h5><span>Checklist do evento</span></h5>
-        <div id="evtChecklistHost"></div>
-        <div class="add-row" style="margin-top:4px;">
-          <input type="text" id="evtNewGroupText" placeholder="Nome do novo grupo (ex.: Transporte, Credenciamento…)" maxlength="80">
-          <button type="button" id="evtAddGroupBtn">+ Grupo</button>
-        </div>
-      </div>
-
-      <div class="subsection">
-        <h5><span>Cronograma interno</span></h5>
-        <div class="rel-items-table-wrap scrollbar">
-          <table class="rel-items-table ret-table" id="evtCronTable"></table>
-        </div>
-        <button class="btn small" id="evtAddCronBtn" type="button">+ Adicionar linha</button>
-      </div>
-
-      <div class="rel-form-actions">
-        <button class="btn danger small" id="evtDeleteBtn">Excluir evento</button>
-      </div>
-    </div>
-  `;
-
-  const touch = () => { evento.updatedAt = Date.now(); };
-
-  wrap.querySelector('#evtBackBtn').addEventListener('click', () => {
-    eventosOpenId = null;
-    renderMain();
-  });
-  wrap.querySelector('#evtNome').addEventListener('change', (e) => { evento.nome = e.target.value; touch(); saveData(true); });
-  wrap.querySelector('#evtStatus').addEventListener('change', (e) => { evento.status = e.target.value; touch(); saveData(true); });
-  wrap.querySelector('#evtData').addEventListener('change', (e) => { evento.dataEvento = e.target.value; touch(); saveData(true); });
-  wrap.querySelector('#evtHorario').addEventListener('change', (e) => { evento.horario = e.target.value; touch(); saveData(true); });
-  wrap.querySelector('#evtLocal').addEventListener('change', (e) => { evento.local = e.target.value; touch(); saveData(true); });
-  wrap.querySelector('#evtResp').addEventListener('change', (e) => { evento.responsavelGeral = e.target.value; touch(); saveData(true); });
-
-  const dadosChaveCols = [
-    { key:'label', label:'Campo', placeholder:'Nome do campo' },
-    { key:'valor', label:'Valor', placeholder:'Preencha aqui' },
-  ];
-  const dadosChaveTable = wrap.querySelector('#evtDadosChaveTable');
-  renderItemsEditTable(dadosChaveTable, evento.dadosChave, dadosChaveCols, () => { touch(); });
-  wrap.querySelector('#evtAddDadoBtn').addEventListener('click', () => {
-    evento.dadosChave.push({ id: uid(), label:'', valor:'' });
-    touch();
-    saveData(true);
-    renderItemsEditTable(dadosChaveTable, evento.dadosChave, dadosChaveCols, () => { touch(); });
-  });
-
-  const checklistHost = wrap.querySelector('#evtChecklistHost');
-  renderEventoChecklist(checklistHost, evento);
-  wrap.querySelector('#evtAddGroupBtn').addEventListener('click', () => {
-    const inp = wrap.querySelector('#evtNewGroupText');
-    const titulo = inp.value.trim();
-    if(!titulo) return;
-    evento.checklistGroups.push({ id: uid(), titulo, itens: [] });
-    inp.value = '';
-    touch();
-    saveData(true);
-    renderEventoChecklist(checklistHost, evento);
-  });
-  wrap.querySelector('#evtNewGroupText').addEventListener('keydown', (e) => {
-    if(e.key === 'Enter'){ e.preventDefault(); wrap.querySelector('#evtAddGroupBtn').click(); }
-  });
-
-  const cronCols = [
-    { key:'feito', label:'Feito', type:'checkbox' },
-    { key:'cor', label:'Cor', type:'color', options: TEMPOS_ROW_COLORS },
-    { key:'fase', label:'Fase', placeholder:'Ex.: Véspera' },
-    { key:'horario', label:'Horário', type:'time', placeholder:'' },
-    { key:'atividade', label:'Atividade', placeholder:'O que acontece' },
-    { key:'responsavel', label:'Responsável', placeholder:'Quem conduz' },
-    { key:'obs', label:'Observações', placeholder:'Opcional' },
-  ];
-  const cronTable = wrap.querySelector('#evtCronTable');
-  renderItemsEditTable(cronTable, evento.cronograma, cronCols, () => { touch(); });
-  wrap.querySelector('#evtAddCronBtn').addEventListener('click', () => {
-    evento.cronograma.push({ id: uid(), feito:false, cor:'', fase:'', horario:'', atividade:'', responsavel:'', obs:'' });
-    touch();
-    saveData(true);
-    renderItemsEditTable(cronTable, evento.cronograma, cronCols, () => { touch(); });
-  });
-
-  wrap.querySelector('#evtDeleteBtn').addEventListener('click', async () => {
-    const ok = await customConfirm(`Excluir o evento "${evento.nome||'sem nome'}"? Essa ação não pode ser desfeita.`, { confirmLabel:'Excluir' });
-    if(!ok) return;
-    state.eventos = state.eventos.filter(x => x.id !== evento.id);
-    eventosOpenId = null;
-    saveData(true);
-    renderTabs();
-    renderMain();
-  });
-}
-
-function renderEventoChecklist(host, evento){
-  const groups = evento.checklistGroups || [];
-
-  host.innerHTML = (groups.map(g => {
-    const done = (g.itens||[]).filter(i => i.done).length;
-    const total = (g.itens||[]).length;
-    const pct = total ? Math.round(done/total*100) : 0;
-    return `
-      <div class="evt-checklist-group" data-gid="${g.id}">
-        <div class="evt-group-head">
-          <input type="text" class="evt-group-title" value="${escapeHtml(g.titulo||'')}" data-gtitle="${g.id}" maxlength="80">
-          <button type="button" class="evt-group-del" data-gdel="${g.id}" aria-label="Remover grupo" title="Remover grupo">✕</button>
-        </div>
-        <div class="checklist-progress">
-          <div class="bar"><div style="width:${pct}%;"></div></div>
-          <span>${done}/${total}</span>
-        </div>
-        ${(g.itens||[]).map(it => `
-          <div class="check-item ${it.done?'done':''}">
-            <input type="checkbox" ${it.done?'checked':''} data-gchk="${g.id}|${it.id}">
-            <input type="text" value="${escapeHtml(it.texto||'')}" data-gtxt="${g.id}|${it.id}" maxlength="160">
-            <button data-girm="${g.id}|${it.id}" aria-label="Remover item">✕</button>
-          </div>
-        `).join('')}
-        <div class="add-row">
-          <input type="text" data-gnew="${g.id}" placeholder="Novo item do checklist…" maxlength="160">
-          <button type="button" data-gaddbtn="${g.id}">+ Item</button>
-        </div>
-      </div>
-    `;
-  }).join('')) || `<div class="evt-empty">Nenhum grupo de checklist ainda. Use o campo abaixo para criar o primeiro.</div>`;
-
-  const touch = () => { evento.updatedAt = Date.now(); };
-  const findGroup = (gid) => groups.find(g => g.id === gid);
-
-  host.querySelectorAll('[data-gtitle]').forEach(inp => {
-    inp.addEventListener('change', (e) => {
-      const g = findGroup(e.target.dataset.gtitle);
-      if(!g) return;
-      g.titulo = e.target.value;
-      touch();
-      saveData(true);
-    });
-  });
-  host.querySelectorAll('[data-gdel]').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const gid = e.currentTarget.dataset.gdel;
-      const g = findGroup(gid);
-      const ok = await customConfirm(`Remover o grupo "${g ? (g.titulo||'sem nome') : ''}" e todos os seus itens?`, { confirmLabel:'Remover grupo' });
-      if(!ok) return;
-      evento.checklistGroups = evento.checklistGroups.filter(x => x.id !== gid);
-      touch();
-      saveData(true);
-      renderEventoChecklist(host, evento);
-    });
-  });
-  host.querySelectorAll('[data-gchk]').forEach(cb => {
-    cb.addEventListener('change', (e) => {
-      const [gid, iid] = e.target.dataset.gchk.split('|');
-      const g = findGroup(gid);
-      const it = g && (g.itens||[]).find(i => i.id === iid);
-      if(!it) return;
-      it.done = e.target.checked;
-      touch();
-      saveData(true);
-      renderEventoChecklist(host, evento);
-    });
-  });
-  host.querySelectorAll('[data-gtxt]').forEach(inp => {
-    inp.addEventListener('change', (e) => {
-      const [gid, iid] = e.target.dataset.gtxt.split('|');
-      const g = findGroup(gid);
-      const it = g && (g.itens||[]).find(i => i.id === iid);
-      if(!it) return;
-      it.texto = e.target.value;
-      touch();
-      saveData(true);
-    });
-  });
-  host.querySelectorAll('[data-girm]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const [gid, iid] = e.currentTarget.dataset.girm.split('|');
-      const g = findGroup(gid);
-      if(!g) return;
-      g.itens = (g.itens||[]).filter(i => i.id !== iid);
-      touch();
-      saveData(true);
-      renderEventoChecklist(host, evento);
-    });
-  });
-  host.querySelectorAll('[data-gaddbtn]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const gid = e.currentTarget.dataset.gaddbtn;
-      const g = findGroup(gid);
-      const inp = host.querySelector(`[data-gnew="${gid}"]`);
-      const texto = inp.value.trim();
-      if(!g || !texto) return;
-      g.itens = g.itens || [];
-      g.itens.push({ id: uid(), texto, done:false });
-      inp.value = '';
-      touch();
-      saveData(true);
-      renderEventoChecklist(host, evento);
-    });
-  });
-  host.querySelectorAll('[data-gnew]').forEach(inp => {
-    inp.addEventListener('keydown', (e) => {
-      if(e.key === 'Enter'){
-        e.preventDefault();
-        host.querySelector(`[data-gaddbtn="${e.target.dataset.gnew}"]`).click();
-      }
-    });
-  });
 }
 
 /* ---------- Relatórios do Setor ---------- */
@@ -5750,7 +5637,7 @@ async function init(){
     const ok = await customConfirm('Apagar TODOS os dados salvos neste navegador (e na nuvem)? Essa ação não pode ser desfeita. As abas do menu são mantidas — só os cartões são apagados.', { confirmLabel:'Apagar tudo' });
     if(ok){
       const keepSections = (state && Array.isArray(state.sectionsConfig) && state.sectionsConfig.length) ? state.sectionsConfig : cloneDefaultSections();
-      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], eventos:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[],transporte:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null,transporte:null}, reportUiType:'utilizacao', transporteCounter:0 };
+      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], projetos:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[],transporte:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null,transporte:null}, reportUiType:'utilizacao', transporteCounter:0 };
       rebuildSectionsRuntime();
       saveData(true);
       renderTabs(); renderMain();

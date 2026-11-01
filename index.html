@@ -5341,21 +5341,37 @@ function buildTransportePages(report, codigo){
   sectionLabel(ctx, y, 'Rota do transporte'); y += 8;
   const rota = (report.rota && report.rota.length) ? report.rota : [{ label:'Destino', data:'', endereco:'' }];
   rota.forEach(r => {
-    const rowH = 28;
-    ctx.setFill(...GREEN_PALE); ctx.fillRect(marginX, y, contentW, rowH);
     const tag = `${r.label||'Destino'}${r.data ? ' ('+r.data+')' : ''}`;
     const tagW = pdfTextWidth(tag, 8.5, { bold:true }) + 16;
+    // O endereço quebra em quantas linhas precisar e o quadro cresce junto,
+    // então nada passa da borda — qualquer que seja o tamanho do texto.
+    const addrRight = marginX + contentW - 12;
+    let addrX = marginX + 24 + tagW;
+    let addrFirstY = 17;       // linha de base da 1ª linha, relativa ao topo do quadro
+    let addrLines;
+    if(addrRight - addrX < 170){
+      // etiqueta muito larga: o endereço desce para baixo dela, em largura total
+      addrX = marginX + 16; addrFirstY = 36;
+      addrLines = pdfWrapText(r.endereco || '—', addrRight - addrX, 10);
+    } else {
+      addrLines = pdfWrapText(r.endereco || '—', addrRight - addrX, 10);
+    }
+    const lineH = 13;
+    const rowH = Math.max(28, addrFirstY + (addrLines.length - 1) * lineH + 11);
+    ctx.setFill(...GREEN_PALE); ctx.fillRect(marginX, y, contentW, rowH);
     ctx.setFill(...GREEN); ctx.fillRect(marginX+8, y+6, tagW, 16);
     ctx.text(marginX+16, y+17, tag, {bold:true, size:8.5, color:[255,255,255]});
-    ctx.text(marginX+24+tagW, y+18, r.endereco || '—', {size:10, color:BLACK});
+    addrLines.forEach((line, i) => ctx.text(addrX, y + addrFirstY + 1 + i*lineH, line, {size:10, color:BLACK}));
     y += rowH + 6;
   });
   y += 8;
 
   sectionLabel(ctx, y, 'Pessoa de contato'); y += 8;
-  ctx.setFill(...GREEN_PALE); ctx.fillRect(marginX, y, contentW, 28);
-  ctx.text(marginX+10, y+19, report.contato || '—', {bold:true, size:10.5, color:BLACK});
-  y += 28 + 16;
+  const contatoLines = pdfWrapText(report.contato || '—', contentW - 20, 10.5, { bold:true });
+  const contatoH = Math.max(28, 19 + (contatoLines.length - 1) * 14 + 9);
+  ctx.setFill(...GREEN_PALE); ctx.fillRect(marginX, y, contentW, contatoH);
+  contatoLines.forEach((line, i) => ctx.text(marginX+10, y+19+i*14, line, {bold:true, size:10.5, color:BLACK}));
+  y += contatoH + 16;
 
   sectionLabel(ctx, y, 'Confirmação de expedição e recebimento'); y += 8;
   const colW = contentW/2;
@@ -5405,11 +5421,12 @@ function buildTransportePages(report, codigo){
   const manifesto = (report.manifesto||[]).filter(it => (it.tipo||'').trim() || (it.identificacao||'').trim());
   manifesto.forEach((it, idx) => {
     const idLines = String(it.identificacao||'').split('\n').map(s=>s.trim()).filter(Boolean);
-    const lineCount = Math.max(1, idLines.length);
+    const tipoLines = pdfWrapText(it.tipo || '—', 120 - 16, 9.5);
+    const lineCount = Math.max(1, idLines.length, tipoLines.length);
     const rowH = lineCount*15 + 10;
     if(idx % 2 === 1){ ctx.setFill(...GREEN_PALE); ctx.fillRect(marginX, y, contentW, rowH); }
     ctx.setStroke(...BORDER); ctx.setLineWidth(0.5); ctx.strokeRect(marginX, y, contentW, rowH);
-    ctx.text(marginX+8, y+16, it.tipo || '—', {size:9.5, color:BLACK});
+    tipoLines.forEach((line, li) => ctx.text(marginX+8, y+16+li*15, line, {size:9.5, color:BLACK}));
     ctx.text(marginX+120+8, y+16, it.quantidade || '—', {size:9.5, color:BLACK});
     (idLines.length ? idLines : ['—']).forEach((line, li) => {
       ctx.text(marginX+210+8, y+16+li*15, line, {size:9.5, color:BLACK});

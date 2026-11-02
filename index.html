@@ -5797,7 +5797,8 @@ function buildSemanalPages(report){
     extras.forEach(x => {
       const sub = [];
       if(x.transporte) sub.push(`Transporte chega ${x.transporte.replace(':','h')}`);
-      push(x.data, { kind:'extra', time:x.horario||'', title:x.acao || 'Ação extra lab', sub });
+      const tempos = [x.horario, x.transporte].filter(Boolean).sort();
+      push(x.data, { kind:'extra', time:x.horario||'', sortTime: tempos[0] || '', title:x.acao || 'Ação extra lab', sub });
       if(x.descongelar){
         const nItens = String(x.pecas||'').split(/\r?\n/).filter(t => t.trim()).length;
         push(x.descongelar, { kind:'descongelar', time:x.descongelarHora||'', title:'Descongelar', sub:[`${nItens ? nItens + ' peça(s)' : 'Peças'} · ${x.acao || 'ação extra lab'}`] });
@@ -5838,9 +5839,11 @@ function buildSemanalPages(report){
       ev.sub.forEach(s => pdfWrapText(s, w, 6.6).forEach(t => lines.push({ t, bold:false })));
       return lines;
     }
+    // ordem cronológica dentro do dia; sem horário vai para o fim
     function sortEv(list){
-      const order = { descongelar:0, curso:1, extra:1 };
-      return list.slice().sort((a,b) => (order[a.kind]-order[b.kind]) || ((a.time||'99:99') < (b.time||'99:99') ? -1 : (a.time||'99:99') > (b.time||'99:99') ? 1 : 0));
+      const key = (e) => e.sortTime || e.time || '99:99';
+      const rank = { curso:0, extra:1, descongelar:2 };
+      return list.slice().sort((a,b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) || (rank[a.kind]-rank[b.kind]));
     }
 
     for(let i = 0; i < days.length; i += 7){

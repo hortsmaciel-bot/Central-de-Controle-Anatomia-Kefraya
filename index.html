@@ -3939,10 +3939,18 @@ function renderTermoHistory(host){
 /* ---------- Ações Semanais do Técnico — rascunho, formulário e histórico ---------- */
 function freshSemanalPeca(){ return { id: uid(), codigo:'', tipo:'', descongelar:'', obs:'' }; }
 function freshSemanalCurso(){
-  return { id: uid(), nome:'', data:'', horario:'', coordenacao:'', antecedencia:'2', obs:'',
+  return { id: uid(), nome:'', data:'', dataFim:'', horario:'', coordenacao:'', antecedencia:'2', obs:'',
            pecas: Array.from({length:3}, () => freshSemanalPeca()) };
 }
-function freshSemanalExtra(){ return { id: uid(), acao:'', data:'', horario:'', transporte:'', local:'', pecas:'', obs:'' }; }
+function freshSemanalExtra(){ return { id: uid(), acao:'', data:'', horario:'', transporte:'', local:'', pecas:'', descongelar:'', descongelarHora:'', antecedencia:'1', obs:'' }; }
+function semanalDiasCurso(c){
+  if(!c.data) return [];
+  const out = [c.data];
+  if(c.dataFim && c.dataFim > c.data){
+    for(let d = semanalAddDays(c.data, 1); d <= c.dataFim && out.length < 14; d = semanalAddDays(d, 1)) out.push(d);
+  }
+  return out;
+}
 function freshSemanalDraft(preserve){
   preserve = preserve || {};
   return {
@@ -4133,7 +4141,8 @@ function renderSemanalCursos(box, draft){
       </div>
       <div class="field-row">
         <div class="field"><label>Curso / atividade</label><input type="text" data-cf="nome" value="${escapeHtml(c.nome)}" placeholder="Ex.: ConMed — Artroscopia de joelho"></div>
-        <div class="field"><label>Data</label><input type="date" data-cf="data" value="${c.data||''}"></div>
+        <div class="field"><label>Data (1º dia)</label><input type="date" data-cf="data" value="${c.data||''}"></div>
+        <div class="field"><label>Último dia <span class="field-note">(se durar mais de 1 dia)</span></label><input type="date" data-cf="dataFim" value="${c.dataFim||''}" min="${c.data||''}"></div>
         <div class="field"><label>Horário</label><input type="time" data-cf="horario" value="${c.horario||''}"></div>
         <div class="field"><label>Coordenação</label><input type="text" data-cf="coordenacao" value="${escapeHtml(c.coordenacao||'')}" placeholder="Opcional"></div>
       </div>
@@ -4157,7 +4166,13 @@ function renderSemanalCursos(box, draft){
     const c = draft.cursos.find(x => x.id === card.dataset.cid);
     if(!c) return;
     card.querySelectorAll('input[data-cf]').forEach(inp => inp.addEventListener('change', (e) => {
-      c[e.target.dataset.cf] = e.target.value; saveData(true);
+      c[e.target.dataset.cf] = e.target.value;
+      if(e.target.dataset.cf === 'data'){
+        const fim = card.querySelector('[data-cf="dataFim"]');
+        fim.min = c.data || '';
+        if(c.dataFim && c.data && c.dataFim < c.data){ c.dataFim = ''; fim.value = ''; }
+      }
+      saveData(true);
     }));
     const tbl = card.querySelector('[data-ctable]');
     renderItemsEditTable(tbl, c.pecas, SEMANAL_PECA_COLS);
@@ -4203,6 +4218,13 @@ function renderSemanalExtras(box, draft){
         <div class="field"><label>Transporte chega às</label><input type="time" data-xf="transporte" value="${x.transporte||''}"></div>
         <div class="field"><label>Local</label><input type="text" data-xf="local" value="${escapeHtml(x.local||'')}" placeholder="Ex.: Hospital / clínica / endereço"></div>
       </div>
+      <div class="field-row">
+        <div class="field"><label>Descongelar em <span class="field-note">(data)</span></label><input type="date" data-xf="descongelar" value="${x.descongelar||''}"></div>
+        <div class="field"><label>Horário do descongelamento <span class="field-note">(opcional)</span></label><input type="time" data-xf="descongelarHora" value="${x.descongelarHora||''}"></div>
+        <div class="field"><label>Ou: dias antes da ação</label>
+          <span class="sem-defrost"><input type="number" min="0" max="30" data-xf="antecedencia" value="${escapeHtml(x.antecedencia||'')}" style="width:56px;"> <button class="btn small ghost" data-xcalc="${x.id}" type="button">Calcular data</button></span>
+        </div>
+      </div>
       <div class="field"><label>Peças a levar <span class="field-note">(uma por linha)</span></label><textarea data-xf="pecas" rows="3" placeholder="Ex.:&#10;PJ-014 — Joelho direito&#10;PO-022 — Ombro esquerdo">${escapeHtml(x.pecas||'')}</textarea></div>
       <div class="field"><label>Observações <span class="field-note">(opcional)</span></label><input type="text" data-xf="obs" value="${escapeHtml(x.obs||'')}" placeholder="Ex.: descongelar na véspera; levar caixa térmica"></div>
     </div>
@@ -4214,6 +4236,15 @@ function renderSemanalExtras(box, draft){
     card.querySelectorAll('[data-xf]').forEach(inp => inp.addEventListener('change', (e) => {
       x[e.target.dataset.xf] = e.target.value; saveData(true);
     }));
+    card.querySelector('[data-xcalc]').addEventListener('click', () => {
+      if(!x.data){ toast('Informe a data da ação primeiro', true); return; }
+      const n = parseInt(x.antecedencia, 10);
+      if(isNaN(n) || n < 0){ toast('Informe quantos dias antes descongelar', true); return; }
+      x.descongelar = semanalAddDays(x.data, -n);
+      saveData(true);
+      card.querySelector('[data-xf="descongelar"]').value = x.descongelar;
+      toast('Descongelar em ' + fmtDate(x.descongelar));
+    });
     card.querySelector('[data-xdel]').addEventListener('click', async () => {
       const ok = await customConfirm('Remover esta ação extra lab?', { confirmLabel:'Remover' });
       if(ok){ draft.extras = draft.extras.filter(v => v.id !== x.id); saveData(true); renderSemanalExtras(box, draft); }
@@ -5753,7 +5784,9 @@ function buildSemanalPages(report){
 
     cursos.forEach(c => {
       const nome = c.nome || 'Curso sem nome';
-      push(c.data, { kind:'curso', time:c.horario||'', title:nome, sub:[] });
+      const diasC = semanalDiasCurso(c);
+      if(diasC.length === 0) push('', { kind:'curso', time:c.horario||'', title:nome, sub:[] });
+      diasC.forEach((d, di) => push(d, { kind:'curso', time:c.horario||'', title:nome, sub: diasC.length > 1 ? [`Dia ${di+1} de ${diasC.length}`] : [] }));
       const porDia = {};
       (c.pecas||[]).filter(pecaFilled).forEach(p => { const k = p.descongelar||''; porDia[k] = (porDia[k]||0) + 1; });
       Object.keys(porDia).forEach(k => {
@@ -5765,6 +5798,10 @@ function buildSemanalPages(report){
       const sub = [];
       if(x.transporte) sub.push(`Transporte chega ${x.transporte.replace(':','h')}`);
       push(x.data, { kind:'extra', time:x.horario||'', title:x.acao || 'Ação extra lab', sub });
+      if(x.descongelar){
+        const nItens = String(x.pecas||'').split(/\r?\n/).filter(t => t.trim()).length;
+        push(x.descongelar, { kind:'descongelar', time:x.descongelarHora||'', title:'Descongelar', sub:[`${nItens ? nItens + ' peça(s)' : 'Peças'} · ${x.acao || 'ação extra lab'}`] });
+      }
     });
 
     const allDates = Object.keys(evByDay).sort();
@@ -5881,7 +5918,9 @@ function buildSemanalPages(report){
   }
   cursos.forEach((c, ci) => {
     const pecas = (c.pecas || []).filter(pecaFilled);
-    const when = [c.data ? `${semanalWeekday(c.data)}, ${fmtDate(c.data)}` : '', c.horario ? c.horario.replace(':','h') : ''].filter(Boolean).join(' · ');
+    const multi = c.data && c.dataFim && c.dataFim > c.data;
+    const dateStr = !c.data ? '' : multi ? `${wdShort(c.data)} ${fmtDate(c.data)} a ${wdShort(c.dataFim)} ${fmtDate(c.dataFim)}` : `${semanalWeekday(c.data)}, ${fmtDate(c.data)}`;
+    const when = [dateStr, c.horario ? c.horario.replace(':','h') : ''].filter(Boolean).join(' · ');
     const titleLines = pdfWrapText(c.nome || 'Curso sem nome', contentW - 20 - (when ? pdfTextWidth(when, 8.5, {bold:true}) + 16 : 0), 10.5, { bold:true });
     const bandH = Math.max(26, titleLines.length*13 + 12);
     const first = pecas.length ? rowMetrics(cCols, { codigo:pecas[0].codigo, tipo:pecas[0].tipo, desc:'x', obs:pecas[0].obs }).h : 24;
@@ -5966,6 +6005,10 @@ function buildSemanalPages(report){
     ctx.line(marginX+10, yy, pageW-marginX-10, yy);
 
     ctx.text(marginX+14, yy+13, 'PEÇAS A LEVAR', {bold:true, size:7, color:INKSOFT});
+    if(x.descongelar){
+      const dTxt = `Descongelar em ${wdShort(x.descongelar)} ${fmtDate(x.descongelar)}` + (x.descongelarHora ? ` às ${x.descongelarHora.replace(':','h')}` : '');
+      ctx.textRight(pageW-marginX-14, yy+13, dTxt, {bold:true, size:8.5, color:[70,120,160]});
+    }
     let py = yy + 28;
     if(items.length === 0){
       ctx.text(marginX+14, py, 'Nenhuma peça informada.', {size:8.5, color:INKSOFT});

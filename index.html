@@ -4023,6 +4023,8 @@ function buildSemanalSection(host){
         </div>
       </div>
 
+      <p class="field-help" style="margin:-4px 0 12px;">📅 O PDF começa com um <strong>calendário da semana</strong>, montado automaticamente a partir do período acima e das datas dos cursos, das peças (descongelamento) e das ações extra lab.</p>
+
       <div class="subsection">
         <h5><span>Cursos da semana</span></h5>
         <p class="field-help" style="margin:-2px 0 8px;">Um cartão por curso. Dentro de cada um, liste as peças destinadas a ele e o dia de descongelamento de cada uma. Se preferir, informe quantos dias antes do curso descongelar e clique em "Preencher datas vazias" — as datas que você já preencheu não são alteradas.</p>
@@ -5770,9 +5772,6 @@ function buildSemanalPages(report){
     if(!start && !end && allDates.length){ start = allDates[0]; end = allDates[allDates.length-1]; }
     if(start && !end) end = semanalAddDays(start, 4);
     if(!start && end) start = semanalAddDays(end, -4);
-    if(!start && !end){
-      if(undated.length === 0) return;      // nada para desenhar
-    }
     if(start && end && end < start){ const t = start; start = end; end = t; }
     if(start && end && end > semanalAddDays(start, 13)) end = semanalAddDays(start, 13);
 
@@ -5789,6 +5788,12 @@ function buildSemanalPages(report){
     ensure(130);
     sectionTitle('PANORAMA DA SEMANA', '(visão geral da sequência — os detalhes vêm nas páginas seguintes)');
     y += 4;
+    if(days.length === 0){
+      ctx.setFill(...TINT); ctx.fillRect(marginX, y, contentW, 30);
+      ctx.setStroke(...BORDER); ctx.setLineWidth(0.7); ctx.strokeRect(marginX, y, contentW, 30);
+      ctx.text(marginX+10, y+19, 'Informe o período da semana e as datas dos cursos / ações para montar o calendário.', {size:8.5, color:INKSOFT});
+      y += 30 + 8;
+    }
 
     function chipLines(ev, w){
       const head = (ev.time ? ev.time.replace(':','h') + '  ' : '') + ev.title;

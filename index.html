@@ -5741,6 +5741,127 @@ function buildSemanalPages(report){
     y += m.h;
   }
 
+  // ---- panorama da semana (calendário)
+  (function drawCalendar(){
+    const BLUE=[70,120,160], PALE_T=[226,238,233], PALE_R=[248,238,224], PALE_B=[226,236,245];
+    const evByDay = {};
+    const outOfRange = [];
+    const undated = [];
+    function push(date, ev){ (date ? (evByDay[date] = evByDay[date] || []) : undated).push(ev); }
+
+    cursos.forEach(c => {
+      const nome = c.nome || 'Curso sem nome';
+      push(c.data, { kind:'curso', time:c.horario||'', title:nome, sub:[] });
+      const porDia = {};
+      (c.pecas||[]).filter(pecaFilled).forEach(p => { const k = p.descongelar||''; porDia[k] = (porDia[k]||0) + 1; });
+      Object.keys(porDia).forEach(k => {
+        if(!k) return;
+        push(k, { kind:'descongelar', time:'', title:'Descongelar', sub:[`${porDia[k]} peça(s) · ${nome}`] });
+      });
+    });
+    extras.forEach(x => {
+      const sub = [];
+      if(x.transporte) sub.push(`Transporte chega ${x.transporte.replace(':','h')}`);
+      push(x.data, { kind:'extra', time:x.horario||'', title:x.acao || 'Ação extra lab', sub });
+    });
+
+    const allDates = Object.keys(evByDay).sort();
+    let start = report.semanaInicio || '', end = report.semanaFim || '';
+    if(!start && !end && allDates.length){ start = allDates[0]; end = allDates[allDates.length-1]; }
+    if(start && !end) end = semanalAddDays(start, 4);
+    if(!start && end) start = semanalAddDays(end, -4);
+    if(!start && !end){
+      if(undated.length === 0) return;      // nada para desenhar
+    }
+    if(start && end && end < start){ const t = start; start = end; end = t; }
+    if(start && end && end > semanalAddDays(start, 13)) end = semanalAddDays(start, 13);
+
+    // estende o calendário para incluir dias fora da semana (ex.: descongelar na semana anterior), até 14 dias no total
+    if(start && allDates.length){
+      const lo = allDates[0] < start ? allDates[0] : start;
+      const hi = allDates[allDates.length-1] > end ? allDates[allDates.length-1] : end;
+      if(hi <= semanalAddDays(lo, 13)){ start = lo; end = hi; }
+    }
+    const days = [];
+    if(start){ for(let d = start; d <= end; d = semanalAddDays(d, 1)) days.push(d); }
+    Object.keys(evByDay).forEach(d => { if(!days.includes(d)) outOfRange.push(d); });
+
+    ensure(130);
+    sectionTitle('PANORAMA DA SEMANA', '(visão geral da sequência — os detalhes vêm nas páginas seguintes)');
+    y += 4;
+
+    function chipLines(ev, w){
+      const head = (ev.time ? ev.time.replace(':','h') + '  ' : '') + ev.title;
+      const lines = pdfWrapText(head, w, 7, { bold:true }).map(t => ({ t, bold:true }));
+      ev.sub.forEach(s => pdfWrapText(s, w, 6.6).forEach(t => lines.push({ t, bold:false })));
+      return lines;
+    }
+    function sortEv(list){
+      const order = { descongelar:0, curso:1, extra:1 };
+      return list.slice().sort((a,b) => (order[a.kind]-order[b.kind]) || ((a.time||'99:99') < (b.time||'99:99') ? -1 : (a.time||'99:99') > (b.time||'99:99') ? 1 : 0));
+    }
+
+    for(let i = 0; i < days.length; i += 7){
+      const chunk = days.slice(i, i+7);
+      const colW = contentW / Math.min(7, days.length);
+      const gridW = colW * chunk.length;
+      const textW = colW - 6 - 5 - 4;
+      const cols = chunk.map(d => sortEv(evByDay[d] || []).map(ev => ({ ev, lines: chipLines(ev, textW) })));
+      const chipH = (c) => c.lines.length * 8.6 + 6;
+      const bodyH = Math.max(58, ...cols.map(col => col.reduce((s,c) => s + chipH(c) + 3, 0) + 6));
+      ensure(22 + bodyH + 6);
+
+      // cabeçalho dos dias
+      ctx.setFill(...TEAL); ctx.fillRect(marginX, y, gridW, 22);
+      chunk.forEach((d, k) => {
+        const cx = marginX + k*colW;
+        ctx.text(cx+5, y+14.5, `${wdShort(d)}  ${semanalShortDate(d)}`, {bold:true, size:8.5, color:WHITE});
+      });
+      y += 22;
+      // corpo
+      chunk.forEach((d, k) => {
+        const cx = marginX + k*colW;
+        const wd = new Date(d + 'T00:00:00Z').getUTCDay();
+        if(wd === 0 || wd === 6){ ctx.setFill(...TINT); ctx.fillRect(cx, y, colW, bodyH); }
+        let cy = y + 4;
+        cols[k].forEach(c => {
+          const h = chipH(c);
+          const pale = c.ev.kind === 'curso' ? PALE_T : c.ev.kind === 'extra' ? PALE_R : PALE_B;
+          const strong = c.ev.kind === 'curso' ? TEAL : c.ev.kind === 'extra' ? RUST : BLUE;
+          ctx.setFill(...pale); ctx.fillRect(cx+3, cy, colW-6, h);
+          ctx.setFill(...strong); ctx.fillRect(cx+3, cy, 2.5, h);
+          c.lines.forEach((l, li) => ctx.text(cx+3+2.5+4, cy+9+li*8.6, l.t, { bold:l.bold, size: l.bold ? 7 : 6.6, color: l.bold ? INK : INKSOFT }));
+          cy += h + 3;
+        });
+      });
+      ctx.setStroke(...BORDER); ctx.setLineWidth(0.6);
+      ctx.strokeRect(marginX, y - 22, gridW, 22 + bodyH);
+      for(let k = 1; k < chunk.length; k++) ctx.line(marginX + k*colW, y - 22, marginX + k*colW, y + bodyH);
+      y += bodyH + 8;
+    }
+
+    // fora do período / sem data
+    const extraNotes = [];
+    outOfRange.sort().forEach(d => evByDay[d].forEach(ev => extraNotes.push(`${wdShort(d)} ${semanalShortDate(d)} — ${ev.kind==='descongelar' ? 'Descongelar: ' + ev.sub[0] : (ev.time ? ev.time.replace(':','h') + ' ' : '') + ev.title}`)));
+    undated.forEach(ev => extraNotes.push(`Sem data — ${ev.title}`));
+    if(extraNotes.length){
+      const nl = pdfWrapText('Fora do período / sem data definida: ' + extraNotes.join('  ·  '), contentW, 7.6);
+      ensure(nl.length*10 + 6);
+      nl.forEach((line, li) => ctx.text(marginX, y+8+li*10, line, {size:7.6, color:INKSOFT}));
+      y += nl.length*10 + 6;
+    }
+
+    // legenda
+    ensure(18);
+    let lx = marginX;
+    [['Curso', TEAL], ['Ação extra lab', RUST], ['Descongelamento', BLUE]].forEach(([lb, col]) => {
+      ctx.setFill(...col); ctx.fillRect(lx, y+2, 8, 8);
+      ctx.text(lx+12, y+9.5, lb, {size:7.6, color:INKSOFT});
+      lx += 12 + pdfTextWidth(lb, 7.6) + 18;
+    });
+    y += 30;
+  })();
+
   // ---- cursos da semana
   sectionTitle('CURSOS DA SEMANA');
   const cCols = [

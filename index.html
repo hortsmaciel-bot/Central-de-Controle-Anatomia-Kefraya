@@ -3943,6 +3943,26 @@ function freshSemanalCurso(){
            pecas: Array.from({length:3}, () => freshSemanalPeca()) };
 }
 function freshSemanalExtra(){ return { id: uid(), acao:'', data:'', horario:'', transporte:'', local:'', pecas:'', descongelar:'', descongelarHora:'', antecedencia:'1', obs:'' }; }
+function freshSemanalBloqueio(){ return { id: uid(), motivo:'', inicio:'', fim:'', obs:'' }; }
+function semanalDiasBloqueio(b){
+  if(!b.inicio) return [];
+  const out = [b.inicio];
+  if(b.fim && b.fim > b.inicio){
+    for(let d = semanalAddDays(b.inicio, 1); d <= b.fim && out.length < 31; d = semanalAddDays(d, 1)) out.push(d);
+  }
+  return out;
+}
+// atividades programadas em dias bloqueados (para avisar antes de gerar o PDF)
+function semanalConflitos(r){
+  const bloq = {};
+  (r.bloqueios || []).forEach(b => semanalDiasBloqueio(b).forEach(d => { (bloq[d] = bloq[d] || []).push(b.motivo || 'Bloqueio'); }));
+  const out = [];
+  const chk = (d, label) => { if(d && bloq[d]) out.push(`${semanalShortDate(d)} — ${label} (${bloq[d][0]})`); };
+  (r.cursos || []).forEach(c => semanalDiasCurso(c).forEach(d => chk(d, c.nome || 'Curso')));
+  (r.extras || []).forEach(x => { chk(x.data, x.acao || 'Ação extra lab'); if(x.descongelar) chk(x.descongelar, 'Descongelamento — ' + (x.acao || 'ação extra lab')); });
+  (r.cursos || []).forEach(c => { const dd = {}; (c.pecas || []).forEach(p => { if(p.descongelar) dd[p.descongelar] = 1; }); Object.keys(dd).forEach(d => chk(d, 'Descongelamento — ' + (c.nome || 'curso'))); });
+  return out;
+}
 function semanalDiasCurso(c){
   if(!c.data) return [];
   const out = [c.data];
@@ -3959,6 +3979,7 @@ function freshSemanalDraft(preserve){
     tecnico: preserve.tecnico || '',
     cursos: [freshSemanalCurso()],
     extras: [],
+    bloqueios: [],
     observacoes: '',
     responsavelNome: preserve.responsavelNome || (state.reportSigner && state.reportSigner.name) || '',
     responsavelCargo: preserve.responsavelCargo || (state.reportSigner && state.reportSigner.role) || '',
@@ -3995,6 +4016,7 @@ function buildSemanalSection(host){
   const draft = state.reportDrafts.semanal;
   if(!Array.isArray(draft.cursos)) draft.cursos = [];
   if(!Array.isArray(draft.extras)) draft.extras = [];
+  if(!Array.isArray(draft.bloqueios)) draft.bloqueios = [];
   const unitInfo = state.unitInfo[draft.unidade] || {};
 
   host.innerHTML = `
@@ -4032,6 +4054,13 @@ function buildSemanalSection(host){
       </div>
 
       <p class="field-help" style="margin:-4px 0 12px;">📅 O PDF começa com um <strong>calendário da semana</strong>, montado automaticamente a partir do período acima e das datas dos cursos, das peças (descongelamento) e das ações extra lab.</p>
+
+      <div class="subsection">
+        <h5><span>Dias bloqueados</span></h5>
+        <p class="field-help" style="margin:-2px 0 8px;">Use para marcar dias em que a unidade não pode receber atividades (obras, manutenção, feriado, indisponibilidade). Eles aparecem em cinza no calendário do PDF.</p>
+        <div id="semBloqueios"></div>
+        <button class="btn small" id="semAddBloqueioBtn" type="button">+ Bloquear dia(s)</button>
+      </div>
 
       <div class="subsection">
         <h5><span>Cursos da semana</span></h5>
@@ -4110,6 +4139,10 @@ function buildSemanalSection(host){
     draft.cursos.push(freshSemanalCurso()); saveData(true);
     renderSemanalCursos(host.querySelector('#semCursos'), draft);
   });
+  host.querySelector('#semAddBloqueioBtn').addEventListener('click', () => {
+    draft.bloqueios.push(freshSemanalBloqueio()); saveData(true);
+    renderSemanalBloqueios(host.querySelector('#semBloqueios'), draft);
+  });
   host.querySelector('#semAddExtraBtn').addEventListener('click', () => {
     draft.extras.push(freshSemanalExtra()); saveData(true);
     renderSemanalExtras(host.querySelector('#semExtras'), draft);
@@ -4123,9 +4156,48 @@ function buildSemanalSection(host){
   });
   host.querySelector('#semGenerateBtn').addEventListener('click', () => exportSemanalPDF(draft));
 
+  renderSemanalBloqueios(host.querySelector('#semBloqueios'), draft);
   renderSemanalCursos(host.querySelector('#semCursos'), draft);
   renderSemanalExtras(host.querySelector('#semExtras'), draft);
   renderSemanalHistory(host.querySelector('#semHistoryList'));
+}
+
+function renderSemanalBloqueios(box, draft){
+  if(draft.bloqueios.length === 0){
+    box.innerHTML = `<div class="empty-mini">Nenhum dia bloqueado nesta semana.</div>`;
+    return;
+  }
+  box.innerHTML = draft.bloqueios.map((b, i) => `
+    <div class="sem-card" data-bid="${b.id}">
+      <div class="sem-card-head">
+        <strong>Bloqueio ${i+1}</strong>
+        <button class="attach-rm" data-bdel="${b.id}" aria-label="Remover bloqueio" title="Remover bloqueio">✕</button>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Motivo</label><input type="text" data-bf="motivo" value="${escapeHtml(b.motivo)}" placeholder="Ex.: Obras no laboratório"></div>
+        <div class="field"><label>Dia (ou 1º dia)</label><input type="date" data-bf="inicio" value="${b.inicio||''}"></div>
+        <div class="field"><label>Último dia <span class="field-note">(se for mais de 1 dia)</span></label><input type="date" data-bf="fim" value="${b.fim||''}" min="${b.inicio||''}"></div>
+      </div>
+      <div class="field"><label>Observações <span class="field-note">(opcional)</span></label><input type="text" data-bf="obs" value="${escapeHtml(b.obs||'')}" placeholder="Ex.: sem acesso à sala de dissecção"></div>
+    </div>
+  `).join('');
+  box.querySelectorAll('.sem-card').forEach(card => {
+    const b = draft.bloqueios.find(v => v.id === card.dataset.bid);
+    if(!b) return;
+    card.querySelectorAll('[data-bf]').forEach(inp => inp.addEventListener('change', (e) => {
+      b[e.target.dataset.bf] = e.target.value;
+      if(e.target.dataset.bf === 'inicio'){
+        const fim = card.querySelector('[data-bf="fim"]');
+        fim.min = b.inicio || '';
+        if(b.fim && b.inicio && b.fim < b.inicio){ b.fim = ''; fim.value = ''; }
+      }
+      saveData(true);
+    }));
+    card.querySelector('[data-bdel]').addEventListener('click', async () => {
+      const ok = await customConfirm('Remover este bloqueio?', { confirmLabel:'Remover' });
+      if(ok){ draft.bloqueios = draft.bloqueios.filter(v => v.id !== b.id); saveData(true); renderSemanalBloqueios(box, draft); }
+    });
+  });
 }
 
 function renderSemanalCursos(box, draft){
@@ -4262,7 +4334,7 @@ function renderSemanalHistory(host){
     <div class="rel-history-item" data-id="${r.id}">
       <div class="rel-history-main">
         <strong>ITC ${escapeHtml(UNIT_REPORT_LABELS[r.unidade]||'')} · semana ${escapeHtml(semanalPeriodo(r) || 'sem data')}</strong>
-        <div>${escapeHtml(r.tecnico || 'Sem técnico informado')} · ${(r.cursos||[]).length} curso(s) · ${(r.extras||[]).length} ação(ões) extra lab</div>
+        <div>${escapeHtml(r.tecnico || 'Sem técnico informado')} · ${(r.cursos||[]).length} curso(s) · ${(r.extras||[]).length} ação(ões) extra lab${(r.bloqueios||[]).length ? ' · ' + r.bloqueios.length + ' bloqueio(s)' : ''}</div>
       </div>
       <div class="rel-history-actions">
         <button class="btn small ghost" data-semload="${r.id}">↺ Carregar</button>
@@ -5776,7 +5848,7 @@ function buildSemanalPages(report){
 
   // ---- panorama da semana (calendário)
   (function drawCalendar(){
-    const BLUE=[70,120,160], PALE_T=[226,238,233], PALE_R=[248,238,224], PALE_B=[226,236,245];
+    const GRAYDK=[95,95,95], BLUE=[70,120,160], PALE_T=[226,238,233], PALE_R=[248,238,224], PALE_B=[226,236,245];
     const evByDay = {};
     const outOfRange = [];
     const undated = [];
@@ -5805,9 +5877,12 @@ function buildSemanalPages(report){
       }
     });
 
+    const blockByDay = {};
+    (report.bloqueios || []).forEach(b => semanalDiasBloqueio(b).forEach(d => { (blockByDay[d] = blockByDay[d] || []).push(b); }));
     const allDates = Object.keys(evByDay).sort();
+    const inferDates = allDates.concat(Object.keys(blockByDay)).sort();
     let start = report.semanaInicio || '', end = report.semanaFim || '';
-    if(!start && !end && allDates.length){ start = allDates[0]; end = allDates[allDates.length-1]; }
+    if(!start && !end && inferDates.length){ start = inferDates[0]; end = inferDates[inferDates.length-1]; }
     if(start && !end) end = semanalAddDays(start, 4);
     if(!start && end) start = semanalAddDays(end, -4);
     if(start && end && end < start){ const t = start; start = end; end = t; }
@@ -5851,7 +5926,14 @@ function buildSemanalPages(report){
       const colW = contentW / Math.min(7, days.length);
       const gridW = colW * chunk.length;
       const textW = colW - 6 - 5 - 4;
-      const cols = chunk.map(d => sortEv(evByDay[d] || []).map(ev => ({ ev, lines: chipLines(ev, textW) })));
+      const cols = chunk.map(d => {
+        const list = sortEv(evByDay[d] || []);
+        if(blockByDay[d]){
+          const motivos = blockByDay[d].map(b => b.motivo || 'Bloqueio');
+          list.unshift({ kind:'bloqueio', time:'', title:'BLOQUEADO', sub: motivos });
+        }
+        return list.map(ev => ({ ev, lines: chipLines(ev, textW) }));
+      });
       const chipH = (c) => c.lines.length * 8.6 + 6;
       const bodyH = Math.max(58, ...cols.map(col => col.reduce((s,c) => s + chipH(c) + 3, 0) + 6));
       ensure(22 + bodyH + 6);
@@ -5860,6 +5942,7 @@ function buildSemanalPages(report){
       ctx.setFill(...TEAL); ctx.fillRect(marginX, y, gridW, 22);
       chunk.forEach((d, k) => {
         const cx = marginX + k*colW;
+        if(blockByDay[d]){ ctx.setFill(...GRAYDK); ctx.fillRect(cx, y, colW, 22); }
         ctx.text(cx+5, y+14.5, `${wdShort(d)}  ${semanalShortDate(d)}`, {bold:true, size:8.5, color:WHITE});
       });
       y += 22;
@@ -5868,11 +5951,18 @@ function buildSemanalPages(report){
         const cx = marginX + k*colW;
         const wd = new Date(d + 'T00:00:00Z').getUTCDay();
         if(wd === 0 || wd === 6){ ctx.setFill(...TINT); ctx.fillRect(cx, y, colW, bodyH); }
+        if(blockByDay[d]){
+          ctx.setFill(...[238,238,238]); ctx.fillRect(cx, y, colW, bodyH);
+          ctx.setStroke(...[205,205,205]); ctx.setLineWidth(0.5);
+          for(let kk = 6; kk < colW + bodyH; kk += 7){
+            ctx.line(cx + Math.max(0, kk - bodyH), y + Math.min(kk, bodyH), cx + Math.min(kk, colW), y + Math.max(0, kk - colW));
+          }
+        }
         let cy = y + 4;
         cols[k].forEach(c => {
           const h = chipH(c);
-          const pale = c.ev.kind === 'curso' ? PALE_T : c.ev.kind === 'extra' ? PALE_R : PALE_B;
-          const strong = c.ev.kind === 'curso' ? TEAL : c.ev.kind === 'extra' ? RUST : BLUE;
+          const pale = c.ev.kind === 'curso' ? PALE_T : c.ev.kind === 'extra' ? PALE_R : c.ev.kind === 'bloqueio' ? [221,221,221] : PALE_B;
+          const strong = c.ev.kind === 'curso' ? TEAL : c.ev.kind === 'extra' ? RUST : c.ev.kind === 'bloqueio' ? GRAYDK : BLUE;
           ctx.setFill(...pale); ctx.fillRect(cx+3, cy, colW-6, h);
           ctx.setFill(...strong); ctx.fillRect(cx+3, cy, 2.5, h);
           c.lines.forEach((l, li) => ctx.text(cx+3+2.5+4, cy+9+li*8.6, l.t, { bold:l.bold, size: l.bold ? 7 : 6.6, color: l.bold ? INK : INKSOFT }));
@@ -5899,7 +5989,7 @@ function buildSemanalPages(report){
     // legenda
     ensure(18);
     let lx = marginX;
-    [['Curso', TEAL], ['Ação extra lab', RUST], ['Descongelamento', BLUE]].forEach(([lb, col]) => {
+    [['Curso', TEAL], ['Ação extra lab', RUST], ['Descongelamento', BLUE], ['Dia bloqueado', GRAYDK]].forEach(([lb, col]) => {
       ctx.setFill(...col); ctx.fillRect(lx, y+2, 8, 8);
       ctx.text(lx+12, y+9.5, lb, {size:7.6, color:INKSOFT});
       lx += 12 + pdfTextWidth(lb, 7.6) + 18;
@@ -6026,6 +6116,37 @@ function buildSemanalPages(report){
     y = top + totalH + ((xi === extras.length-1) ? 22 : 12);
   });
 
+  // ---- dias bloqueados (detalhe)
+  const bloqs = (report.bloqueios || []).filter(b => b.inicio || (b.motivo||'').trim());
+  if(bloqs.length){
+    sectionTitle('DIAS BLOQUEADOS');
+    bloqs.forEach(b => {
+      const per = !b.inicio ? 'Data não definida' : (b.fim && b.fim > b.inicio) ? `${semanalWeekday(b.inicio)}, ${fmtDate(b.inicio)}  a  ${semanalWeekday(b.fim)}, ${fmtDate(b.fim)}` : `${semanalWeekday(b.inicio)}, ${fmtDate(b.inicio)}`;
+      const tl = pdfWrapText(b.motivo || 'Bloqueio', contentW-30, 10, { bold:true });
+      const ol = b.obs ? pdfWrapText(b.obs, contentW-30, 8.5) : [];
+      const h = tl.length*13 + 14 + 12 + (ol.length ? ol.length*11 + 2 : 0) + 6;
+      ensure(h + 6);
+      ctx.setFill(...[238,238,238]); ctx.fillRect(marginX, y, contentW, h);
+      ctx.setStroke(...BORDER); ctx.setLineWidth(0.7); ctx.strokeRect(marginX, y, contentW, h);
+      ctx.setFill(...[95,95,95]); ctx.fillRect(marginX, y, 4, h);
+      let yy = y + 15;
+      tl.forEach((line, li) => ctx.text(marginX+14, yy+li*13, line, {bold:true, size:10, color:INK}));
+      yy += tl.length*13 + 1;
+      ctx.text(marginX+14, yy, per, {size:8.8, color:INKSOFT});
+      yy += 12;
+      ol.forEach((line, li) => ctx.text(marginX+14, yy+li*11, line, {size:8.5, color:INKSOFT}));
+      y += h + 8;
+    });
+    const conf = semanalConflitos(report);
+    if(conf.length){
+      const cl = pdfWrapText('Atenção — atividades programadas em dia bloqueado: ' + conf.join('  ·  '), contentW, 8.3, { bold:true });
+      ensure(cl.length*11 + 8);
+      cl.forEach((line, li) => ctx.text(marginX, y+8+li*11, line, {bold:true, size:8.3, color:RUST}));
+      y += cl.length*11 + 8;
+    }
+    y += 14;
+  }
+
   // ---- observações gerais
   if((report.observacoes||'').trim()){
     const ol = pdfWrapText(report.observacoes, contentW-20, 9);
@@ -6073,6 +6194,13 @@ function generateSemanalPdfBlob(report){
 async function exportSemanalPDF(report, opts){
   opts = opts || {};
   const archive = opts.archive !== false;
+  if(archive){
+    const conf = semanalConflitos(report);
+    if(conf.length){
+      const ok = await customConfirm('Há atividades marcadas em dias bloqueados:\n\n' + conf.slice(0,8).join('\n') + (conf.length > 8 ? '\n…' : '') + '\n\nGerar o PDF mesmo assim?', { confirmLabel:'Gerar mesmo assim', danger:false });
+      if(!ok) return;
+    }
+  }
   const btn = document.getElementById('semGenerateBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
   try{

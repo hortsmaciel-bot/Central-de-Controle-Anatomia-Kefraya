@@ -234,6 +234,40 @@ no próprio papel e ele assina in loco.
 
 Nada muda no Supabase, no Netlify nem no GitHub: os dados novos são guardados no mesmo registro que o app já usa.
 
+## 🌡️ Câmaras Frias (nova aba operacional)
+
+Controle de temperatura das câmaras frias das unidades ITC, com **duas leituras por dia (manhã e tarde)**.
+- Na primeira vez, clique em *Criar 1 câmara refrigerada por unidade* (ou cadastre à mão em *Gerenciar câmaras*).
+  Cada câmara tem nome, unidade, tipo e **faixa de temperatura** — os valores iniciais são sugestões
+  (refrigerada 2 a 8 °C; congelada −25 a −15 °C). **Ajuste conforme o procedimento do setor.**
+- **Registro do dia**: digite a temperatura de cada câmara na manhã e na tarde (o horário é preenchido sozinho).
+  Dá para voltar a dias anteriores para completar registros esquecidos.
+- **Monitoramento automático** — cada câmara recebe um status:
+  - **Alerta**: as 2 últimas leituras fora da faixa, ou a última mais de 3 °C fora da faixa (possível defeito).
+  - **Atenção**: leitura isolada fora da faixa; tendência de subida (ou queda, em refrigerada) de 1,5 °C ou mais
+    na média das últimas 4 leituras; diferença de mais de 4 °C entre manhã e tarde; ou leituras pendentes nos últimos 3 dias.
+- Cada câmara tem um gráfico (7, 14 ou 30 dias) com a faixa ideal sombreada, estatísticas e a tabela dos últimos 7 dias.
+- O número de câmaras com problema aparece na aba (⚠) e como aviso na *Visão geral*.
+- Os dados ficam no mesmo registro do Supabase e entram em todos os backups.
+
+## ☁ Backup do programa inteiro no Google Drive
+
+O botão **"Backup no Drive"** (canto superior direito, e também no menu ⋯) cria a pasta **Backups Central Kefraya**
+no seu Drive e envia, a cada clique, dois arquivos: `central-kefraya-dados-AAAA-MM-DD_HHhMM.json` (todos os dados
+de todas as abas) e `central-kefraya-programa-AAAA-MM-DD_HHhMM.html` (cópia do próprio programa). Para restaurar os
+dados, use *⋯ → Importar backup* com o arquivo `.json`.
+
+**Configuração única (leva uns 10 minutos)** — o Google exige que o app tenha uma "identificação" sua:
+1. Acesse https://console.cloud.google.com, crie um projeto e, em *APIs e serviços → Biblioteca*, ative a **Google Drive API**.
+2. Em *Tela de permissão OAuth*: tipo **Externo**, preencha o nome do app e **adicione o seu e-mail do Google como usuário de teste**.
+3. Em *Credenciais → Criar credenciais → ID do cliente OAuth → Aplicativo da Web*, em **Origens JavaScript autorizadas**
+   coloque o endereço do site no Netlify (ex.: `https://seu-site.netlify.app`, sem barra no final). Não precisa de URI de redirecionamento.
+4. Copie o **ID do cliente** (termina em `.apps.googleusercontent.com`), clique em *Backup no Drive* e cole no campo que abrir.
+
+O app pede apenas a permissão `drive.file`: ele só enxerga os arquivos que ele mesmo criou, nunca o resto do seu Drive.
+Na primeira vez o Google abre uma janela de login/autorização; depois disso o backup é de um clique (a autorização dura cerca de 1 hora por sessão).
+Se o Google mostrar "app não verificado", clique em *Avançado → Continuar* (normal para apps pessoais em modo de teste).
+
 ## Anexar arquivos do computador
 
 O botão **"📎 Anexar arquivo do computador"**, dentro de cada cartão, envia o arquivo para um

@@ -1035,7 +1035,7 @@
   <div id="syncStatus" class="sync-status" title="Verificando nuvem…"><span>◌</span> Verificando nuvem…</div>
   <div class="top-actions">
     <button class="icon-btn" id="themeToggle" title="Alternar tema" aria-label="Alternar tema claro/escuro">◐</button>
-    <button class="icon-btn wide" id="btnDriveTop" title="Salva uma cópia de todos os dados e do programa na pasta &quot;Backups Central Kefraya&quot; do seu Google Drive."><span aria-hidden="true">☁</span><span class="lbl">Backup no Drive</span></button>
+    <button class="icon-btn wide" id="btnDriveTop" title="Aciona o script de backup do Google: salva todos os dados, o programa e os anexos na pasta &quot;Backups Central Kefraya&quot; do seu Drive."><span aria-hidden="true">☁</span><span class="lbl">Backup no Drive</span></button>
     <div class="top-menu-wrap">
       <button class="icon-btn" id="menuToggle" title="Mais opções" aria-label="Mais opções">⋯</button>
       <div class="top-menu" id="topMenu">
@@ -1046,7 +1046,7 @@
         <hr>
         <button id="btnDriveBackup" title="Envia os dados e uma cópia do programa para o seu Google Drive.">☁⭱ Backup no Google Drive</button>
         <div class="top-menu-note" id="driveLastRow"></div>
-        <button id="btnDriveSetup" title="Informe o ID do cliente do Google para ativar o backup no Drive.">🔑 Configurar Google Drive</button>
+        <button id="btnDriveSetup" title="Informe o endereço e o código de acesso do script de backup do Google.">🔑 Configurar backup no Drive</button>
         <hr>
         <button id="btnExport" title="Baixa um arquivo .json com todo o texto dos quadros (títulos, datas, checklists, links de anexos). Não inclui arquivos em si.">⭳ Exportar backup dos dados (.json)</button>
         <button id="btnImport" title="Substitui os dados atuais pelos de um backup .json exportado anteriormente.">⭱ Importar backup</button>
@@ -1319,7 +1319,7 @@ function mkCard(opts){
 
 /* ---------- Seed data (transcrito do quadro anterior, como ponto de partida) ---------- */
 function seedData(){
-  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], projetos: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [], transporte: [], semanal: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null, transporte: null, semanal: null }, reportUiType: 'utilizacao', transporteCounter: 0, camaras: { lista: [], leituras: [], notas: {} }, settings: { googleClientId: '' } };
+  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], projetos: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [], transporte: [], semanal: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null, transporte: null, semanal: null }, reportUiType: 'utilizacao', transporteCounter: 0, camaras: { lista: [], leituras: [], notas: {} }, settings: { backupScriptUrl: '', backupScriptToken: '' } };
   for(const s of DEFAULT_SECTIONS){
     data.sections[s.id] = {};
     for(const c of s.columns) data.sections[s.id][c.id] = [];
@@ -1553,8 +1553,10 @@ function normalizeState(data){
   delete data.eventos;
   if(!Array.isArray(data.projetos)) data.projetos = [];
   camNormalizeData(data);
-  if(!data.settings || typeof data.settings !== 'object') data.settings = { googleClientId: '' };
-  if(typeof data.settings.googleClientId !== 'string') data.settings.googleClientId = '';
+  if(!data.settings || typeof data.settings !== 'object') data.settings = {};
+  delete data.settings.googleClientId;
+  if(typeof data.settings.backupScriptUrl !== 'string') data.settings.backupScriptUrl = '';
+  if(typeof data.settings.backupScriptToken !== 'string') data.settings.backupScriptToken = '';
   const todoPrioKeys = ['alta','media','baixa'];
   for(const p of data.projetos){
     if(!p.id) p.id = uid();
@@ -3803,132 +3805,64 @@ function camRenderRules(wrap){
     </ul>`;
 }
 
-/* ---------- Backup do programa inteiro no Google Drive ----------
-   Usa o login do Google (Google Identity Services) direto no navegador, com a permissão mínima
-   "drive.file" (o app só enxerga o que ele mesmo criou). Cria a pasta "Backups Central Kefraya" no Drive
-   e envia, a cada clique: (1) um .json com TODOS os dados e (2) uma cópia do próprio programa (.html).
-   Requer um "ID do cliente OAuth" do Google, informado uma única vez (ver README). */
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+/* ---------- Backup no Google Drive (via Google Apps Script) ----------
+   O botão chama o script de backup (arquivo backup-kefraya.gs) publicado como "App da Web" na conta Google
+   de quem coordena. É o próprio script, rodando no Google, que lê os dados, grava na pasta
+   "Backups Central Kefraya" do Drive e devolve um resumo. O app só guarda o endereço (/exec) e o código de acesso. */
 const DRIVE_FOLDER_NAME = 'Backups Central Kefraya';
-let driveToken = null, driveTokenExp = 0, gisPromise = null, driveBusy = false;
+let driveBusy = false;
 
-function driveClientId(){ return (state && state.settings && state.settings.googleClientId) || ''; }
-function driveLoadGis(){
-  if(window.google && window.google.accounts && window.google.accounts.oauth2) return Promise.resolve();
-  if(gisPromise) return gisPromise;
-  gisPromise = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => { gisPromise = null; reject(Object.assign(new Error('gis_load'), { code:'gis_load' })); };
-    document.head.appendChild(s);
-  });
-  return gisPromise;
+function driveScriptUrl(){ return ((state && state.settings && state.settings.backupScriptUrl) || '').trim(); }
+function driveScriptToken(){ return ((state && state.settings && state.settings.backupScriptToken) || '').trim(); }
+function driveConfigurado(){ return !!(driveScriptUrl() && driveScriptToken()); }
+function driveChamada(acao){
+  const u = driveScriptUrl();
+  return u + (u.indexOf('?') === -1 ? '?' : '&') + 'acao=' + acao + '&token=' + encodeURIComponent(driveScriptToken());
 }
-function driveGetToken(clientId){
-  return new Promise((resolve, reject) => {
-    if(driveToken && Date.now() < driveTokenExp - 60000) return resolve(driveToken);
-    driveLoadGis().then(() => {
-      const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: clientId, scope: DRIVE_SCOPE,
-        callback: (resp) => {
-          if(!resp || resp.error){ reject(Object.assign(new Error((resp && resp.error) || 'auth'), { code:(resp && resp.error) || 'auth' })); return; }
-          driveToken = resp.access_token; driveTokenExp = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
-          resolve(driveToken);
-        },
-        error_callback: (err) => reject(Object.assign(new Error((err && err.type) || 'popup'), { code:(err && err.type) || 'popup' })),
-      });
-      client.requestAccessToken({ prompt: '' });
-    }).catch(reject);
-  });
-}
-async function driveApi(url, token, opts){
-  opts = opts || {};
-  const r = await fetch(url, Object.assign({}, opts, { headers: Object.assign({ Authorization: 'Bearer ' + token }, opts.headers || {}) }));
-  if(!r.ok){
-    let msg = '';
-    try{ const j = await r.json(); msg = (j && j.error && (j.error.message || j.error)) || ''; }catch(e){}
-    throw Object.assign(new Error(String(msg) || ('HTTP ' + r.status)), { status:r.status });
-  }
-  return r.json();
-}
-async function driveEnsureFolder(token){
-  const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-  const found = await driveApi(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive&pageSize=1`, token);
-  if(found.files && found.files.length) return found.files[0].id;
-  const created = await driveApi('https://www.googleapis.com/drive/v3/files?fields=id', token, {
-    method:'POST', headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType:'application/vnd.google-apps.folder' }),
-  });
-  return created.id;
-}
-async function driveUpload(token, folderId, name, mime, content){
-  const boundary = 'kefraya' + Math.random().toString(36).slice(2);
-  const meta = JSON.stringify({ name, parents:[folderId] });
-  const body = new Blob([`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`, content, `\r\n--${boundary}--`]);
-  return driveApi('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', token, {
-    method:'POST', headers:{ 'Content-Type':'multipart/related; boundary=' + boundary }, body,
-  });
-}
-function driveStamp(){
-  const d = new Date(), p = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}`;
+async function driveFetchJson(acao, timeoutMs){
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  let txt;
+  try{
+    const r = await fetch(driveChamada(acao), { redirect:'follow', signal: ctrl.signal });
+    txt = await r.text();
+  }catch(e){
+    throw Object.assign(new Error('rede'), { code:'rede' });
+  }finally{ clearTimeout(t); }
+  let j = null;
+  try{ j = JSON.parse(txt); }catch(e){}
+  if(!j || typeof j !== 'object') throw Object.assign(new Error('resposta'), { code:'resposta' });
+  if(!j.ok) throw Object.assign(new Error(j.erro || 'erro do script'), { code:'script' });
+  return j;
 }
 function driveErrorMessage(e){
-  const c = e && (e.code || e.message), st = e && e.status;
-  if(c === 'popup_closed' || c === 'access_denied') return 'Login do Google cancelado — o backup não foi feito.';
-  if(c === 'popup_failed_to_open') return 'O navegador bloqueou a janela do Google. Libere pop-ups para este site e tente de novo.';
-  if(c === 'gis_load') return 'Não consegui carregar o login do Google. Verifique a internet e tente de novo.';
-  if(c === 'invalid_client' || c === 'idpiframe_initialization_failed') return 'O ID do cliente do Google parece inválido. Confira em "Configurar Google Drive".';
-  if(st === 403) return 'O Google recusou o envio (403). Confira se a "Google Drive API" está ativada no projeto do Google Cloud.';
-  if(st === 401) return 'A permissão do Google expirou. Clique em backup de novo.';
-  return 'Não foi possível enviar o backup ao Drive: ' + ((e && e.message) || 'erro desconhecido');
+  if(e && e.code === 'rede') return 'Não consegui falar com o script do Google (sem internet, ou o navegador bloqueou a resposta). Olhe a pasta "' + DRIVE_FOLDER_NAME + '" no Drive para ver se o backup foi feito.';
+  if(e && e.code === 'resposta') return 'O endereço do script respondeu algo inesperado. Confira se ele termina em /exec e se a implantação está com acesso "Qualquer pessoa".';
+  return 'O script do Google recusou: ' + ((e && e.message) || 'erro desconhecido');
 }
 function driveRenderStatus(){
   const row = document.getElementById('driveLastRow');
   if(!row) return;
   const last = state && state.meta && state.meta.driveBackup;
-  if(!driveClientId()) row.textContent = 'Google Drive ainda não configurado.';
-  else if(!last) row.textContent = 'Nenhum backup no Drive ainda.';
-  else row.textContent = 'Último backup no Drive: ' + new Date(last.at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+  if(!driveConfigurado()) row.textContent = 'Backup no Drive ainda não configurado.';
+  else if(!last) row.textContent = 'Nenhum backup feito por aqui ainda.';
+  else row.textContent = 'Último backup pelo app: ' + new Date(last.at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
 
 async function backupToDrive(){
   if(driveBusy) return;
-  const clientId = driveClientId();
-  if(!clientId){ openDriveSetup(true); return; }
+  if(!driveConfigurado()){ openDriveSetup(true); return; }
   driveBusy = true;
   const topBtn = document.getElementById('btnDriveTop');
   if(topBtn){ topBtn.disabled = true; topBtn.querySelector('.lbl').textContent = 'Enviando…'; }
+  toast('Fazendo backup no Drive… pode levar alguns minutos se houver muitos anexos');
   try{
-    let token = await driveGetToken(clientId);
-    const stamp = driveStamp();
-    const payload = JSON.stringify(state, null, 2);
-    let htmlText = null;
-    try{
-      if(/^https?:/.test(location.protocol)){
-        const r = await fetch(location.href.split('#')[0], { cache:'no-store' });
-        if(r.ok) htmlText = await r.text();
-      }
-    }catch(e){ htmlText = null; }
-    const run = async (tk) => {
-      const folderId = await driveEnsureFolder(tk);
-      const jsonFile = await driveUpload(tk, folderId, `central-kefraya-dados-${stamp}.json`, 'application/json', payload);
-      let appFile = null;
-      if(htmlText) appFile = await driveUpload(tk, folderId, `central-kefraya-programa-${stamp}.html`, 'text/html', htmlText);
-      return { folderId, jsonFile, appFile };
-    };
-    let res;
-    try{ res = await run(token); }
-    catch(e){
-      if(e && e.status === 401){ driveToken = null; token = await driveGetToken(clientId); res = await run(token); }
-      else throw e;
-    }
+    const j = await driveFetchJson('backup', 5.5 * 60 * 1000);
     state.meta = state.meta || {};
-    state.meta.driveBackup = { at: Date.now(), json: res.jsonFile.name, link: res.jsonFile.webViewLink || '', folderId: res.folderId, comPrograma: !!res.appFile };
+    state.meta.driveBackup = { at: Date.now(), pasta: j.pasta || '', ignorado: !!j.ignorado };
     saveData(true);
     driveRenderStatus();
-    toast(res.appFile ? `Backup enviado ao Drive (pasta "${DRIVE_FOLDER_NAME}"): dados + programa` : `Backup dos dados enviado ao Drive (pasta "${DRIVE_FOLDER_NAME}")`);
+    toast(j.ignorado ? (j.resumo && j.resumo[0]) || 'Backup recente — nada novo a salvar.' : 'Backup salvo no Drive (pasta "' + DRIVE_FOLDER_NAME + '") ✓');
   }catch(e){
     console.warn('backup drive', e);
     toast(driveErrorMessage(e), true);
@@ -3938,51 +3872,59 @@ async function backupToDrive(){
   }
 }
 
-/* ---- janela de configuração do ID do cliente ---- */
+/* ---- janela de configuração (endereço do script + código de acesso) ---- */
 function openDriveSetup(thenBackup){
   let ov = document.getElementById('driveSetupOverlay');
   if(!ov){
     ov = document.createElement('div');
     ov.className = 'overlay'; ov.id = 'driveSetupOverlay';
     ov.innerHTML = `<div class="confirm-modal drive-setup" role="dialog" aria-modal="true" aria-labelledby="driveSetupTitle">
-      <h3 id="driveSetupTitle" style="margin:0 0 8px;">☁ Configurar backup no Google Drive</h3>
-      <p class="drive-help">Configuração feita <strong>uma única vez</strong>. Depois disso, o botão "Backup no Drive" envia tudo para a pasta <em>${DRIVE_FOLDER_NAME}</em> do seu Drive com um clique.</p>
+      <h3 id="driveSetupTitle" style="margin:0 0 8px;">☁ Backup no Google Drive</h3>
+      <p class="drive-help">O backup é feito pelo <strong>script do Google</strong> (arquivo <code>backup-kefraya.gs</code>) que você já instalou. Para o botão do app acioná-lo, publique o script como <strong>App da Web</strong> e cole os dois dados abaixo.</p>
       <ol class="drive-steps">
-        <li>Acesse <strong>console.cloud.google.com</strong>, crie um projeto e ative a <strong>Google Drive API</strong> (APIs e serviços → Biblioteca).</li>
-        <li>Em <strong>Tela de permissão OAuth</strong>: tipo Externo; adicione o seu e-mail do Google como <strong>usuário de teste</strong>.</li>
-        <li>Em <strong>Credenciais → Criar credenciais → ID do cliente OAuth</strong>, escolha <strong>Aplicativo da Web</strong> e, em "Origens JavaScript autorizadas", coloque o endereço deste site: <code id="driveOrigin"></code></li>
-        <li>Copie o <strong>ID do cliente</strong> (termina em <code>.apps.googleusercontent.com</code>) e cole abaixo.</li>
+        <li>No Apps Script, rode a função <strong>configurarAcessoApp</strong> e copie o <strong>código de acesso</strong> que aparece no registro de execução.</li>
+        <li>Clique em <strong>Implantar → Nova implantação</strong>, tipo <strong>App da Web</strong>; <em>Executar como: Eu</em> e <em>Quem tem acesso: Qualquer pessoa</em>. Copie o endereço que termina em <code>/exec</code>.</li>
       </ol>
-      <div class="field"><label for="driveClientInput">ID do cliente do Google</label>
-        <input type="text" id="driveClientInput" placeholder="123456789-abc....apps.googleusercontent.com" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label for="driveUrlInput">Endereço do App da Web (termina em /exec)</label>
+        <input type="text" id="driveUrlInput" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" spellcheck="false"></div>
+      <div class="field" style="margin-top:8px;"><label for="driveTokenInput">Código de acesso</label>
+        <input type="text" id="driveTokenInput" placeholder="código mostrado por configurarAcessoApp" autocomplete="off" spellcheck="false"></div>
       <div class="confirm-actions" style="margin-top:14px;">
         <button class="btn ghost small" id="driveSetupCancel">Cancelar</button>
-        <button class="btn primary small" id="driveSetupSave">Salvar e fazer backup</button>
+        <button class="btn primary small" id="driveSetupSave">Testar e salvar</button>
       </div>
     </div>`;
     document.body.appendChild(ov);
     ov.querySelector('#driveSetupCancel').addEventListener('click', () => ov.classList.remove('open'));
     ov.addEventListener('click', (e) => { if(e.target === ov) ov.classList.remove('open'); });
   }
-  ov.querySelector('#driveOrigin').textContent = location.origin && location.origin !== 'null' ? location.origin : '(o endereço do site publicado)';
-  const input = ov.querySelector('#driveClientInput');
-  input.value = driveClientId();
+  const urlIn = ov.querySelector('#driveUrlInput'), tokIn = ov.querySelector('#driveTokenInput');
+  urlIn.value = driveScriptUrl(); tokIn.value = driveScriptToken();
   const saveBtn = ov.querySelector('#driveSetupSave');
-  saveBtn.textContent = thenBackup ? 'Salvar e fazer backup' : 'Salvar';
-  saveBtn.onclick = () => {
-    const v = input.value.trim();
-    if(v && !/\.apps\.googleusercontent\.com$/.test(v)){ toast('O ID do cliente deve terminar em .apps.googleusercontent.com', true); return; }
+  saveBtn.textContent = thenBackup ? 'Testar, salvar e fazer backup' : 'Testar e salvar';
+  saveBtn.onclick = async () => {
+    const u = urlIn.value.trim(), t = tokIn.value.trim();
+    if(!/^https:\/\/script\.google\.com\/macros\/s\/[^\s]+\/exec$/.test(u)){ toast('O endereço deve começar com https://script.google.com/macros/s/ e terminar em /exec', true); return; }
+    if(!t){ toast('Cole o código de acesso', true); return; }
     state.settings = state.settings || {};
-    state.settings.googleClientId = v;
-    driveToken = null; driveTokenExp = 0;
+    const anterior = { u: state.settings.backupScriptUrl, t: state.settings.backupScriptToken };
+    state.settings.backupScriptUrl = u; state.settings.backupScriptToken = t;
+    saveBtn.disabled = true; saveBtn.textContent = 'Testando…';
+    try{
+      await driveFetchJson('ping', 30000);
+    }catch(e){
+      state.settings.backupScriptUrl = anterior.u || ''; state.settings.backupScriptToken = anterior.t || '';
+      toast(driveErrorMessage(e), true);
+      saveBtn.disabled = false; saveBtn.textContent = thenBackup ? 'Testar, salvar e fazer backup' : 'Testar e salvar';
+      return;
+    }
+    saveBtn.disabled = false;
     saveData(true); driveRenderStatus();
     ov.classList.remove('open');
-    if(!v){ toast('Configuração do Google Drive removida'); return; }
-    driveLoadGis().catch(() => {});
-    if(thenBackup) backupToDrive(); else toast('Google Drive configurado');
+    if(thenBackup) backupToDrive(); else toast('Backup no Drive configurado ✓');
   };
   ov.classList.add('open');
-  setTimeout(() => input.focus(), 50);
+  setTimeout(() => urlIn.focus(), 50);
 }
 
 /* ---------- Relatórios do Setor ---------- */
@@ -7373,7 +7315,6 @@ async function init(){
   document.getElementById('btnDriveSetup').addEventListener('click', () => { menu.classList.remove('open'); openDriveSetup(false); });
   menuBtn.addEventListener('click', () => driveRenderStatus());
   driveRenderStatus();
-  if(driveClientId()) driveLoadGis().catch(() => {});
   document.getElementById('btnManageSections').addEventListener('click', () => { menu.classList.remove('open'); openSectionsModal(); });
   document.getElementById('btnLogout').addEventListener('click', () => { menu.classList.remove('open'); signOutAndShowLogin(); });
 
@@ -7404,7 +7345,7 @@ async function init(){
     const ok = await customConfirm('Apagar TODOS os dados salvos neste navegador (e na nuvem)? Essa ação não pode ser desfeita. As abas do menu são mantidas — só os cartões são apagados.', { confirmLabel:'Apagar tudo' });
     if(ok){
       const keepSections = (state && Array.isArray(state.sectionsConfig) && state.sectionsConfig.length) ? state.sectionsConfig : cloneDefaultSections();
-      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], projetos:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[],transporte:[],semanal:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null,transporte:null,semanal:null}, reportUiType:'utilizacao', transporteCounter:0, camaras:{lista:[],leituras:[],notas:{}}, settings:(state && state.settings) || {googleClientId:''} };
+      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], projetos:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[],transporte:[],semanal:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null,transporte:null,semanal:null}, reportUiType:'utilizacao', transporteCounter:0, camaras:{lista:[],leituras:[],notas:{}}, settings:(state && state.settings) || {backupScriptUrl:'',backupScriptToken:''} };
       rebuildSectionsRuntime();
       saveData(true);
       renderTabs(); renderMain();

@@ -1319,7 +1319,7 @@ function mkCard(opts){
 
 /* ---------- Seed data (transcrito do quadro anterior, como ponto de partida) ---------- */
 function seedData(){
-  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], projetos: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [], transporte: [], semanal: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null, transporte: null, semanal: null }, reportUiType: 'utilizacao', transporteCounter: 0, camaras: { lista: [], leituras: [], notas: {} }, settings: { backupScriptUrl: '', backupScriptToken: '' } };
+  const data = { sectionsConfig: cloneDefaultSections(), sections: {}, meta: { seededAt: Date.now() }, retiradas: [], projetos: [], unitInfo: {}, reportSigner: { name:'', role:'' }, reports: { utilizacao: [], termo: [], tempos: [], transporte: [], semanal: [], conferencia: [] }, reportDrafts: { utilizacao: null, termo: null, tempos: null, transporte: null, semanal: null, conferencia: null }, reportUiType: 'utilizacao', transporteCounter: 0, camaras: { lista: [], leituras: [], notas: {} }, settings: { backupScriptUrl: '', backupScriptToken: '' } };
   for(const s of DEFAULT_SECTIONS){
     data.sections[s.id] = {};
     for(const c of s.columns) data.sections[s.id][c.id] = [];
@@ -1533,15 +1533,17 @@ function normalizeState(data){
   if(!Array.isArray(data.reports.tempos)) data.reports.tempos = [];
   if(!Array.isArray(data.reports.transporte)) data.reports.transporte = [];
   if(!Array.isArray(data.reports.semanal)) data.reports.semanal = [];
-  if(!data.reportDrafts || typeof data.reportDrafts !== 'object') data.reportDrafts = { utilizacao: null, termo: null, tempos: null, transporte: null, semanal: null };
+  if(!Array.isArray(data.reports.conferencia)) data.reports.conferencia = [];
+  if(!data.reportDrafts || typeof data.reportDrafts !== 'object') data.reportDrafts = { utilizacao: null, termo: null, tempos: null, transporte: null, semanal: null, conferencia: null };
   if(data.reportDrafts.transporte === undefined) data.reportDrafts.transporte = null;
   if(data.reportDrafts.semanal === undefined) data.reportDrafts.semanal = null;
+  if(data.reportDrafts.conferencia === undefined) data.reportDrafts.conferencia = null;
   // migrate the old single-draft shape (pre-Termo de Utilização) into the new per-type map
   if(data.reportDraft && typeof data.reportDraft === 'object' && !data.reportDrafts.utilizacao){
     data.reportDrafts.utilizacao = data.reportDraft;
   }
   delete data.reportDraft;
-  if(!['utilizacao','termo','tempos','transporte','semanal'].includes(data.reportUiType)) data.reportUiType = 'utilizacao';
+  if(!['utilizacao','termo','tempos','transporte','semanal','conferencia'].includes(data.reportUiType)) data.reportUiType = 'utilizacao';
   if(typeof data.transporteCounter !== 'number' || data.transporteCounter < 0) data.transporteCounter = 0;
   // o contador nunca pode voltar pra trás de um código já emitido, mesmo que
   // algum registro tenha sido editado/importado manualmente.
@@ -2116,7 +2118,7 @@ function renderTabs(){
     let count = '';
     if(s.id === 'camaras'){ const r = camResumoGeral(); const n = r.alerta + r.atencao; count = n ? `<span class="tab-count tab-alert" title="Câmaras que precisam de atenção">⚠ ${n}</span>` : `<span class="tab-count">${r.total}</span>`; }
     else if(s.id === 'eventos') count = `<span class="tab-count">${(state.projetos||[]).reduce((n, p) => n + (p.tarefas||[]).filter(t => !t.feito).length, 0)}</span>`;
-    else if(s.id === 'relatorios') count = `<span class="tab-count">${(state.reports.utilizacao||[]).length + (state.reports.termo||[]).length + (state.reports.tempos||[]).length + (state.reports.transporte||[]).length + (state.reports.semanal||[]).length}</span>`;
+    else if(s.id === 'relatorios') count = `<span class="tab-count">${(state.reports.utilizacao||[]).length + (state.reports.termo||[]).length + (state.reports.tempos||[]).length + (state.reports.transporte||[]).length + (state.reports.semanal||[]).length + (state.reports.conferencia||[]).length}</span>`;
     else if(s.id !== 'dashboard') count = `<span class="tab-count">${countActive(s.id)}</span>`;
     return `<button class="tab-btn ${currentSectionId===s.id?'active':''}" data-accent="${s.id}" data-nav="${s.id}">
       <span class="tab-dot"></span>${s.icon ? s.icon+' ' : ''}${escapeHtml(s.label)} ${count}
@@ -3934,6 +3936,7 @@ const REPORT_TYPES = [
   { id:'tempos', label:'Tempos e Movimentos', icon:'⏱️' },
   { id:'transporte', label:'Protocolo de Transporte', icon:'🚑' },
   { id:'semanal', label:'Ações Semanais do Técnico', icon:'🗓️' },
+  { id:'conferencia', label:'Conferência de Peças', icon:'🔎' },
 ];
 
 function freshUtilizacaoDraft(preserve){
@@ -4219,6 +4222,7 @@ function buildRelatorios(){
   else if(state.reportUiType === 'tempos') buildTemposSection(host);
   else if(state.reportUiType === 'transporte') buildTransporteSection(host);
   else if(state.reportUiType === 'semanal') buildSemanalSection(host);
+  else if(state.reportUiType === 'conferencia') buildConferenciaSection(host);
   else buildUtilizacaoSection(host);
 
   return wrap;
@@ -5063,6 +5067,239 @@ function renderSemanalHistory(host){
     const ok = await customConfirm('Excluir este relatório do histórico? O PDF já baixado não será afetado.', { confirmLabel:'Excluir' });
     if(ok){
       state.reports.semanal = state.reports.semanal.filter(r => r.id !== id);
+      saveData(true); renderTabs(); renderMain();
+    }
+  }));
+}
+
+/* ---------- Conferência de Peças — termo de conferência do cliente antes do curso ---------- */
+function freshConfPeca(){ return { id: uid(), codigo:'', tipo:'', obs:'', conferida:false }; }
+function freshConfPessoa(){ return { id: uid(), nome:'', cargo:'' }; }
+function freshConferenciaDraft(preserve){
+  preserve = preserve || {};
+  return {
+    unidade: preserve.unidade || 'jds',
+    clienteEmpresa: '', curso: '', dataCurso: '',
+    dataVisita: '', horaVisita: '',
+    pecas: Array.from({length:6}, () => freshConfPeca()),
+    observacoes: '',
+    conferentes: [freshConfPessoa()],
+    itcNome: preserve.itcNome || '', itcCargo: preserve.itcCargo || '',
+  };
+}
+const CONF_PECA_COLS = [
+  { key:'codigo', label:'Código / Identificação', placeholder:'Ex.: PJ-014', type:'text' },
+  { key:'tipo', label:'Tipo de peça', placeholder:'Ex.: Joelho direito', type:'text' },
+  { key:'obs', label:'Obs. da peça', placeholder:'Opcional', type:'text' },
+  { key:'conferida', label:'Conferida', type:'checkbox' },
+];
+const CONF_PESSOA_COLS = [
+  { key:'nome', label:'Nome de quem conferiu', placeholder:'Nome completo', type:'text' },
+  { key:'cargo', label:'Cargo / função', placeholder:'Opcional', type:'text' },
+];
+
+function buildConferenciaSection(host){
+  if(!state.reportDrafts.conferencia) state.reportDrafts.conferencia = freshConferenciaDraft();
+  const draft = state.reportDrafts.conferencia;
+  if(!Array.isArray(draft.pecas)) draft.pecas = [];
+  if(!Array.isArray(draft.conferentes) || draft.conferentes.length === 0) draft.conferentes = [freshConfPessoa()];
+  const unitInfo = state.unitInfo[draft.unidade] || {};
+
+  host.innerHTML = `
+    <div class="rel-form panel">
+      <div class="field-row">
+        <div class="field">
+          <label>Unidade</label>
+          <select id="confUnidade">
+            ${Object.keys(UNIT_REPORT_LABELS).map(id => `<option value="${id}" ${draft.unidade===id?'selected':''}>ITC ${escapeHtml(UNIT_REPORT_LABELS[id])}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>Endereço da unidade <span class="field-note">(rodapé do PDF)</span></label>
+          <input type="text" id="confEndereco" value="${escapeHtml(unitInfo.address||'')}" placeholder="Rua, número — bairro — cidade/UF">
+        </div>
+        <div class="field">
+          <label>Telefone</label>
+          <input type="text" id="confTelefone" value="${escapeHtml(unitInfo.phone||'')}" placeholder="+55 ...">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Cliente / empresa / instituição</label>
+          <input type="text" id="confCliente" value="${escapeHtml(draft.clienteEmpresa)}" placeholder="Ex.: Stryker">
+        </div>
+        <div class="field">
+          <label>Curso / evento</label>
+          <input type="text" id="confCurso" value="${escapeHtml(draft.curso)}" placeholder="Ex.: Artroscopia de joelho">
+        </div>
+        <div class="field">
+          <label>Data do curso</label>
+          <input type="date" id="confDataCurso" value="${draft.dataCurso||''}">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Dia da visita de conferência</label>
+          <input type="date" id="confDataVisita" value="${draft.dataVisita||''}">
+        </div>
+        <div class="field">
+          <label>Horário da visita <span class="field-note">(opcional)</span></label>
+          <input type="time" id="confHoraVisita" value="${draft.horaVisita||''}">
+        </div>
+      </div>
+
+      <div class="subsection">
+        <h5><span>Peças selecionadas para o cliente</span></h5>
+        <p class="field-help" style="margin:-2px 0 8px;">Liste as peças que o cliente vai conferir. A coluna "Conferida" sai marcada no PDF; se deixar desmarcada, o quadradinho sai vazio para o cliente marcar no papel durante a visita.</p>
+        <div class="rel-items-table-wrap scrollbar">
+          <table class="rel-items-table ret-table" id="confPecasTable"></table>
+        </div>
+        <div class="sem-card-actions">
+          <button class="btn small" id="confAddPecaBtn" type="button">+ Adicionar peça</button>
+          <button class="btn small ghost" id="confMarkAllBtn" type="button">Marcar todas como conferidas</button>
+          <button class="btn small ghost" id="confBulkToggle" type="button">Colar uma lista…</button>
+        </div>
+        <div id="confBulkBox" hidden style="margin-top:8px;">
+          <textarea id="confBulkText" rows="5" placeholder="Uma peça por linha. Pode usar &quot;código — tipo de peça&quot; (separado por traço, ponto e vírgula ou tab).&#10;Ex.:&#10;PJ-014 — Joelho direito&#10;PO-003 — Ombro esquerdo"></textarea>
+          <button class="btn small" id="confBulkAdd" type="button" style="margin-top:6px;">Adicionar à lista</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Observações importantes <span class="field-note">(opcional — se ficar em branco, o PDF deixa linhas para escrever à mão)</span></label>
+        <textarea id="confObs" rows="3" placeholder="Ex.: cliente pediu troca da peça PJ-015; peça PO-003 com mancha lateral, aceita pelo cliente.">${escapeHtml(draft.observacoes||'')}</textarea>
+      </div>
+
+      <div class="subsection">
+        <h5><span>Quem conferiu (cliente)</span></h5>
+        <p class="field-help" style="margin:-2px 0 8px;">Cada pessoa listada ganha um espaço de assinatura no PDF. Se não souber o nome, deixe em branco: o PDF traz "Nome legível" para preencher à mão.</p>
+        <div class="rel-items-table-wrap scrollbar">
+          <table class="rel-items-table ret-table" id="confPessoasTable"></table>
+        </div>
+        <button class="btn small" id="confAddPessoaBtn" type="button" style="margin-top:8px;">+ Adicionar pessoa</button>
+      </div>
+
+      <div class="subsection">
+        <h5><span>ITC presente na conferência</span></h5>
+        <div class="field-row">
+          <div class="field">
+            <label>Nome <span class="field-note">(opcional)</span></label>
+            <input type="text" id="confItcNome" value="${escapeHtml(draft.itcNome||'')}" placeholder="Quem do ITC acompanhou a conferência">
+          </div>
+          <div class="field">
+            <label>Cargo / função <span class="field-note">(opcional)</span></label>
+            <input type="text" id="confItcCargo" value="${escapeHtml(draft.itcCargo||'')}" placeholder="Ex.: Técnico(a) de laboratório">
+          </div>
+        </div>
+      </div>
+
+      <div class="rel-form-actions">
+        <button class="btn ghost" id="confClearBtn" type="button">Limpar formulário</button>
+        <button class="btn primary" id="confGenerateBtn" type="button">⭳ Gerar PDF</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>🗂 Histórico de conferências emitidas</h3>
+      <div id="confHistoryList"></div>
+    </div>
+  `;
+
+  const $ = (id) => host.querySelector('#' + id);
+  $('confUnidade').addEventListener('change', (e) => { draft.unidade = e.target.value; saveData(true); renderMain(); });
+  $('confEndereco').addEventListener('change', (e) => {
+    state.unitInfo[draft.unidade] = state.unitInfo[draft.unidade] || {};
+    state.unitInfo[draft.unidade].address = e.target.value.trim(); saveData(true);
+  });
+  $('confTelefone').addEventListener('change', (e) => {
+    state.unitInfo[draft.unidade] = state.unitInfo[draft.unidade] || {};
+    state.unitInfo[draft.unidade].phone = e.target.value.trim(); saveData(true);
+  });
+  [['confCliente','clienteEmpresa'],['confCurso','curso'],['confDataCurso','dataCurso'],['confDataVisita','dataVisita'],['confHoraVisita','horaVisita'],['confObs','observacoes'],['confItcNome','itcNome'],['confItcCargo','itcCargo']]
+    .forEach(([id, key]) => $(id).addEventListener('change', (e) => { draft[key] = e.target.value; saveData(true); }));
+
+  const pecasTbl = $('confPecasTable'), pessoasTbl = $('confPessoasTable');
+  renderItemsEditTable(pecasTbl, draft.pecas, CONF_PECA_COLS);
+  renderItemsEditTable(pessoasTbl, draft.conferentes, CONF_PESSOA_COLS);
+  $('confAddPecaBtn').addEventListener('click', () => { draft.pecas.push(freshConfPeca()); saveData(true); renderItemsEditTable(pecasTbl, draft.pecas, CONF_PECA_COLS); });
+  $('confMarkAllBtn').addEventListener('click', () => {
+    const algumas = draft.pecas.filter(p => (p.codigo||'').trim() || (p.tipo||'').trim());
+    if(!algumas.length){ toast('Adicione as peças primeiro', true); return; }
+    algumas.forEach(p => { p.conferida = true; });
+    saveData(true); renderItemsEditTable(pecasTbl, draft.pecas, CONF_PECA_COLS);
+  });
+  $('confBulkToggle').addEventListener('click', () => { const b = $('confBulkBox'); b.hidden = !b.hidden; if(!b.hidden) $('confBulkText').focus(); });
+  $('confBulkAdd').addEventListener('click', () => {
+    const linhas = $('confBulkText').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if(!linhas.length){ toast('Cole pelo menos uma linha', true); return; }
+    // reaproveita linhas vazias do começo da tabela antes de acrescentar novas
+    const vazias = draft.pecas.filter(p => !(p.codigo||'').trim() && !(p.tipo||'').trim() && !(p.obs||'').trim());
+    linhas.forEach(l => {
+      const [cod, ...resto] = l.split(/\t|;|\s[—–-]\s/);
+      const alvo = vazias.shift() || (draft.pecas.push(freshConfPeca()), draft.pecas[draft.pecas.length-1]);
+      alvo.codigo = (cod || '').trim(); alvo.tipo = resto.join(' — ').trim();
+    });
+    saveData(true);
+    $('confBulkText').value = ''; $('confBulkBox').hidden = true;
+    renderItemsEditTable(pecasTbl, draft.pecas, CONF_PECA_COLS);
+    toast(linhas.length + ' peça(s) adicionada(s)');
+  });
+  $('confAddPessoaBtn').addEventListener('click', () => { draft.conferentes.push(freshConfPessoa()); saveData(true); renderItemsEditTable(pessoasTbl, draft.conferentes, CONF_PESSOA_COLS); });
+  $('confClearBtn').addEventListener('click', async () => {
+    const ok = await customConfirm('Limpar todos os campos do formulário? O histórico já emitido não será afetado.', { confirmLabel:'Limpar' });
+    if(ok){
+      state.reportDrafts.conferencia = freshConferenciaDraft({ unidade: draft.unidade, itcNome: draft.itcNome, itcCargo: draft.itcCargo });
+      saveData(true); renderMain();
+    }
+  });
+  $('confGenerateBtn').addEventListener('click', () => exportConferenciaPDF(draft));
+  renderConferenciaHistory($('confHistoryList'));
+}
+
+function renderConferenciaHistory(host){
+  const list = (state.reports.conferencia || []).slice().sort((a,b) => b.createdAt - a.createdAt);
+  if(list.length === 0){
+    host.innerHTML = `<div class="empty-mini">Nenhuma conferência emitida ainda. Preencha o formulário acima e clique em "Gerar PDF".</div>`;
+    return;
+  }
+  host.innerHTML = list.map(r => {
+    const n = (r.pecas || []).filter(p => (p.codigo||'').trim() || (p.tipo||'').trim()).length;
+    return `
+    <div class="rel-history-item" data-id="${r.id}">
+      <div class="rel-history-main">
+        <strong>${escapeHtml(r.clienteEmpresa || 'Sem cliente')} · ${escapeHtml(r.curso || 'sem curso')}</strong>
+        <div>ITC ${escapeHtml(UNIT_REPORT_LABELS[r.unidade]||'')} · visita ${escapeHtml(fmtDate(r.dataVisita) || 'sem data')} · ${n} peça(s)</div>
+      </div>
+      <div class="rel-history-actions">
+        <button class="btn small ghost" data-confload="${r.id}">↺ Carregar</button>
+        <button class="btn small" data-confdl="${r.id}">⭳ Baixar de novo</button>
+        <button class="btn small danger" data-confrm="${r.id}">Excluir</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  host.querySelectorAll('[data-confload]').forEach(btn => btn.addEventListener('click', async (e) => {
+    const rec = list.find(r => r.id === e.target.dataset.confload);
+    if(!rec) return;
+    const ok = await customConfirm('Carregar esta conferência no formulário? Os dados atuais do formulário serão substituídos.', { confirmLabel:'Carregar' });
+    if(ok){
+      const copy = JSON.parse(JSON.stringify(rec));
+      delete copy.id; delete copy.createdAt;
+      state.reportDrafts.conferencia = copy;
+      saveData(true); renderMain();
+    }
+  }));
+  host.querySelectorAll('[data-confdl]').forEach(btn => btn.addEventListener('click', (e) => {
+    const rec = list.find(r => r.id === e.target.dataset.confdl);
+    if(rec) exportConferenciaPDF(rec, { archive:false });
+  }));
+  host.querySelectorAll('[data-confrm]').forEach(btn => btn.addEventListener('click', async (e) => {
+    const id = e.target.dataset.confrm;
+    const ok = await customConfirm('Excluir esta conferência do histórico? O PDF já baixado não será afetado.', { confirmLabel:'Excluir' });
+    if(ok){
+      state.reports.conferencia = state.reports.conferencia.filter(r => r.id !== id);
       saveData(true); renderTabs(); renderMain();
     }
   }));
@@ -6949,6 +7186,254 @@ async function exportSemanalPDF(report, opts){
   }
 }
 
+/* ---------- Conferência de Peças — PDF ---------- */
+function buildConferenciaPages(report){
+  const pageW = 595.28, pageH = 841.89, marginX = 40;
+  const contentW = pageW - marginX*2;
+  const RUST=[168,118,62], TEAL=[20,48,45], TINT=[245,247,246], BORDER=[223,230,226],
+        INK=[22,33,28], INKSOFT=[84,101,93], FAINT=[140,150,145], WHITE=[255,255,255];
+
+  const unitLabel = UNIT_REPORT_LABELS[report.unidade] || 'GRUPO KEFRAYA';
+  const unitInfo = (state.unitInfo && state.unitInfo[report.unidade]) || {};
+  const bottomLimit = pageH - 60;
+  const pecas = (report.pecas || []).filter(p => (p.codigo||'').trim() || (p.tipo||'').trim() || (p.obs||'').trim());
+  const pessoas = (report.conferentes && report.conferentes.length ? report.conferentes : [{ nome:'', cargo:'' }]);
+  const dataVisitaFmt = report.dataVisita ? `${semanalWeekday(report.dataVisita)}, ${fmtDate(report.dataVisita)}` : '';
+  const horaFmt = report.horaVisita ? report.horaVisita.replace(':', 'h') : '';
+
+  const pages = [];
+  let ctx = makePdfCtx(pageW, pageH);
+  pages.push(ctx);
+  let y = 40;
+  function newPage(){
+    ctx = makePdfCtx(pageW, pageH);
+    pages.push(ctx);
+    y = 40;
+    ctx.text(marginX, y, `CONFERÊNCIA DE PEÇAS  |  ITC ${unitLabel}  (continuação)`, {bold:true, size:8.5, color:RUST});
+    y += 22;
+  }
+  function ensure(h){ if(y + h > bottomLimit) newPage(); }
+
+  // ---- cabeçalho
+  ctx.text(marginX, y, `CONFERÊNCIA DE PEÇAS  |  ITC ${unitLabel}`, {bold:true, size:9, color:RUST});
+  y += 26;
+  ctx.text(marginX, y, 'Termo de Conferência de Peças', {size:21, color:INK});
+  y += 19;
+  ctx.text(marginX, y, 'Verificação, pelo cliente, das peças destinadas ao curso — antes da sua utilização', {size:10, color:INKSOFT});
+  y += 10;
+  ctx.setStroke(...TEAL); ctx.setLineWidth(1.3);
+  ctx.line(marginX, y, pageW-marginX, y);
+  y += 26;
+
+  // ---- caixa de identificação (altura de cada linha se ajusta ao texto)
+  const halfW = contentW/2;
+  const infoRows = [
+    [ ['CLIENTE / EMPRESA / INSTITUIÇÃO', report.clienteEmpresa], ['CURSO / EVENTO', report.curso] ],
+    [ ['DATA DO CURSO', report.dataCurso ? `${semanalWeekday(report.dataCurso)}, ${fmtDate(report.dataCurso)}` : ''],
+      ['DIA DA VISITA DE CONFERÊNCIA', [dataVisitaFmt, horaFmt].filter(Boolean).join(' · ')] ],
+    [ ['UNIDADE', 'ITC ' + unitLabel], ['TOTAL DE PEÇAS NA LISTA', String(pecas.length)] ],
+  ];
+  const rowLayout = infoRows.map(row => {
+    const wrapped = row.map(c => pdfWrapText(c[1] || '—', halfW-20, 10.5, { bold:true }).slice(0, 2));
+    return { wrapped, h: 24 + Math.max(...wrapped.map(w => w.length)) * 13 };
+  });
+  const boxH = rowLayout.reduce((s, r) => s + r.h, 0);
+  const boxTop = y;
+  ctx.setFill(...TINT); ctx.fillRect(marginX, boxTop, contentW, boxH);
+  ctx.setStroke(...BORDER); ctx.setLineWidth(0.7);
+  ctx.strokeRect(marginX, boxTop, contentW, boxH);
+  ctx.line(marginX+halfW, boxTop, marginX+halfW, boxTop+boxH);
+  let ry = boxTop;
+  rowLayout.forEach((rl, ri) => {
+    if(ri > 0) ctx.line(marginX, ry, marginX+contentW, ry);
+    infoRows[ri].forEach((cell, ci) => {
+      const cx = marginX + ci*halfW;
+      ctx.text(cx+10, ry+14, cell[0], {bold:true, size:7.3, color:INKSOFT});
+      rl.wrapped[ci].forEach((line, li) => ctx.text(cx+10, ry+30+li*13, line, {bold:true, size:10.5, color:INK}));
+    });
+    ry += rl.h;
+  });
+  y = boxTop + boxH + 24;
+
+  // ---- tabela de peças
+  ctx.text(marginX, y, 'PEÇAS SELECIONADAS PARA CONFERÊNCIA', {bold:true, size:9.5, color:INK});
+  y += 13;
+  const cols = [
+    { key:'n', label:'Nº', w:30 },
+    { key:'codigo', label:'CÓDIGO / IDENTIFICAÇÃO', w:100 },
+    { key:'tipo', label:'TIPO DE PEÇA', w:150 },
+    { key:'obs', label:'OBSERVAÇÃO', w: contentW - (30+100+150+62) },
+    { key:'ok', label:'CONFERIDA', w:62 },
+  ];
+  function drawHeader(){
+    const wrapped = cols.map(c => pdfWrapText(c.label, c.w-8, 7.4, { bold:true }));
+    const hH = Math.max(1, ...wrapped.map(w => w.length)) * 9 + 8;
+    ctx.setFill(...TEAL); ctx.fillRect(marginX, y, contentW, hH);
+    let x = marginX;
+    cols.forEach((c, i) => {
+      wrapped[i].forEach((line, li) => ctx.text(x+6, y+11+li*9, line, {bold:true, size:7.4, color:WHITE}));
+      x += c.w;
+    });
+    y += hH;
+  }
+  drawHeader();
+  if(pecas.length === 0){
+    ctx.setStroke(...BORDER); ctx.setLineWidth(0.5); ctx.strokeRect(marginX, y, contentW, 22);
+    ctx.text(marginX+6, y+14, 'Nenhuma peça informada.', {size:8, color:INKSOFT});
+    y += 22;
+  }
+  pecas.forEach((p, i) => {
+    const vals = { codigo:p.codigo||'', tipo:p.tipo||'', obs:p.obs||'' };
+    const wrapped = ['codigo','tipo','obs'].map(k => pdfWrapText(vals[k], cols.find(c => c.key === k).w-8, 8));
+    const rH = Math.max(22, Math.max(...wrapped.map(w => w.length)) * 10 + 8);
+    if(y + rH > bottomLimit){ newPage(); drawHeader(); }
+    if(i % 2 === 1){ ctx.setFill(...TINT); ctx.fillRect(marginX, y, contentW, rH); }
+    ctx.setStroke(...BORDER); ctx.setLineWidth(0.5); ctx.strokeRect(marginX, y, contentW, rH);
+    let x = marginX;
+    ctx.text(x+6, y+12, String(i+1), {size:8, color:INKSOFT}); x += cols[0].w;
+    ['codigo','tipo','obs'].forEach((k, ki) => {
+      wrapped[ki].forEach((line, li) => ctx.text(x+6, y+12+li*10, line, {size:8, color:INK}));
+      x += cols[ki+1].w;
+    });
+    // quadradinho de conferência (marcado ou vazio, para marcar à mão)
+    const bx = x + (cols[4].w - 11)/2, by = y + (rH - 11)/2;
+    ctx.setStroke(...INK); ctx.setLineWidth(0.9); ctx.strokeRect(bx, by, 11, 11);
+    if(p.conferida){
+      ctx.setStroke(...TEAL); ctx.setLineWidth(1.7);
+      ctx.line(bx+2.2, by+5.8, bx+4.7, by+8.6);
+      ctx.line(bx+4.7, by+8.6, bx+9, by+2.6);
+    }
+    y += rH;
+  });
+  y += 22;
+
+  // ---- observações importantes
+  const obsLines = (report.observacoes || '').trim() ? pdfWrapText(report.observacoes.trim(), contentW-28, 9.5) : [];
+  const obsH = obsLines.length ? obsLines.length*13 + 16 : 62;
+  ensure(obsH + 30);
+  ctx.text(marginX, y, 'OBSERVAÇÕES IMPORTANTES', {bold:true, size:9.5, color:INK});
+  y += 11;
+  ctx.setFill(...TINT); ctx.fillRect(marginX, y, contentW, obsH);
+  ctx.setStroke(...BORDER); ctx.setLineWidth(0.7); ctx.strokeRect(marginX, y, contentW, obsH);
+  ctx.setFill(...RUST); ctx.fillRect(marginX, y, 4, obsH);
+  if(obsLines.length){
+    obsLines.forEach((line, li) => ctx.text(marginX+14, y+17+li*13, line, {size:9.5, color:INK}));
+  } else {
+    ctx.setStroke(...BORDER); ctx.setLineWidth(0.6);
+    [24, 42].forEach(dy => ctx.line(marginX+14, y+dy, pageW-marginX-14, y+dy));
+  }
+  y += obsH + 24;
+
+  // ---- declaração
+  const nomes = pessoas.map(p => (p.nome||'').trim()).filter(Boolean);
+  const juntar = (arr) => arr.length <= 1 ? (arr[0] || '') : arr.slice(0, -1).join(', ') + ' e ' + arr[arr.length-1];
+  const quem = nomes.length
+    ? juntar(nomes) + (report.clienteEmpresa ? ', representando ' + report.clienteEmpresa + ',' : ',')
+    : (report.clienteEmpresa ? 'o(a) representante de ' + report.clienteEmpresa + ',' : 'o(a) representante do cliente,');
+  const qtd = pecas.length;
+  const declText = `Declaramos que, ${dataVisitaFmt ? 'em ' + dataVisitaFmt.charAt(0).toLowerCase() + dataVisitaFmt.slice(1) + (horaFmt ? ', às ' + horaFmt : '') : 'na data da visita'}, ${quem} conferiu(ram) pessoalmente, na unidade ITC ${unitLabel}, ${qtd === 1 ? 'a peça anatômica selecionada e relacionada' : 'as ' + qtd + ' peças anatômicas selecionadas e relacionadas'} neste documento, destinada${qtd === 1 ? '' : 's'} ao curso${report.curso ? ' "' + report.curso + '"' : ''}${report.dataCurso ? ' (' + fmtDate(report.dataCurso) + ')' : ''}, antes da sua utilização, estando de acordo com a seleção apresentada, ressalvadas as observações registradas acima.`;
+  const declLines = pdfWrapText(declText, contentW, 9.5);
+  ensure(declLines.length*13 + 30);
+  ctx.text(marginX, y, 'DECLARAÇÃO DE CONFERÊNCIA', {bold:true, size:9.5, color:INK});
+  y += 15;
+  declLines.forEach((line, li) => ctx.text(marginX, y+li*13, line, {size:9.5, color:INK}));
+  y += declLines.length*13 + 34;
+
+  // ---- assinaturas do cliente (2 por linha)
+  const sigW = 220, rightX0 = marginX + contentW - sigW;
+  const drawSig = (x0, caption, nome, cargo) => {
+    ctx.setStroke(...BORDER); ctx.setLineWidth(0.8);
+    ctx.line(x0, y, x0+sigW, y);
+    ctx.text(x0, y+14, caption, {bold:true, size:9.5, color:INK});
+    ctx.text(x0, y+27, nome || 'Nome legível', {bold: !!nome, size: nome ? 10 : 8.5, color: nome ? INK : INKSOFT});
+    if(cargo) ctx.text(x0, y+39, cargo, {size:8.5, color:INKSOFT});
+  };
+  for(let i = 0; i < pessoas.length; i += 2){
+    ensure(62);
+    drawSig(marginX, 'Assinatura do(a) cliente — quem conferiu', pessoas[i].nome, pessoas[i].cargo);
+    if(pessoas[i+1]) drawSig(rightX0, 'Assinatura do(a) cliente — quem conferiu', pessoas[i+1].nome, pessoas[i+1].cargo);
+    y += 62;
+  }
+
+  // ---- ITC presente na conferência
+  ensure(70);
+  drawSig(marginX, 'Assinatura — ITC presente na conferência', (report.itcNome||'').trim(), (report.itcCargo||'').trim());
+  ctx.setStroke(...BORDER); ctx.setLineWidth(0.8);
+  ctx.line(rightX0, y, rightX0+sigW, y);
+  ctx.text(rightX0, y+14, 'Data', {bold:true, size:9.5, color:INK});
+  if(report.dataVisita) ctx.text(rightX0, y-4, fmtDate(report.dataVisita), {size:10, color:INK});
+  y += 52;
+
+  ctx.setStroke(...BORDER); ctx.setLineWidth(0.7);
+  ctx.line(marginX, y, pageW-marginX, y);
+
+  // ---- rodapé em todas as páginas
+  const footerParts = [`ITC ${unitLabel}`];
+  if(unitInfo.address) footerParts.push(unitInfo.address);
+  if(unitInfo.phone) footerParts.push(unitInfo.phone);
+  const footerText = footerParts.join('  ·  ');
+  pages.forEach((p, idx) => {
+    p.setStroke(...BORDER); p.setLineWidth(0.7);
+    p.line(marginX, pageH-38, pageW-marginX, pageH-38);
+    p.text(marginX, pageH-24, footerText, {bold:true, size:7.5, color:FAINT});
+    if(pages.length > 1) p.textRight(pageW-marginX, pageH-24, `Página ${idx+1} de ${pages.length}`, {size:7.5, color:FAINT});
+  });
+  return { pages, pageW, pageH };
+}
+
+function generateConferenciaPdfBlob(report){
+  const { pages, pageW, pageH } = buildConferenciaPages(report);
+  const pdfString = assemblePdf(pages.map(p => p.ops), pageW, pageH, pages.map(p => Array.from(p.usedImages)));
+  return pdfStringToBlob(pdfString);
+}
+
+async function exportConferenciaPDF(report, opts){
+  opts = opts || {};
+  const archive = opts.archive !== false;
+  const btn = document.getElementById('confGenerateBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
+  try{
+    const blob = generateConferenciaPdfBlob(report);
+    const namePart = (report.clienteEmpresa || 'cliente').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+    const filename = `conferencia-pecas-${report.dataVisita || camHoje()}-${namePart || 'sem-nome'}.pdf`;
+
+    let handled = false;
+    try{
+      if(window.claude && typeof window.claude.use === 'function'){
+        const downloads = await window.claude.use('downloads');
+        if(downloads){ await downloads.save({ filename, data: blob }); handled = true; }
+      }
+    }catch(e){
+      if(e && e.code === 'declined'){ handled = true; }
+      else console.warn('downloads capability failed for conferencia pdf', e);
+    }
+    if(!handled){
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+    toast('PDF exportado');
+
+    if(archive){
+      const record = JSON.parse(JSON.stringify(report));
+      record.id = uid();
+      record.createdAt = Date.now();
+      state.reports.conferencia.push(record);
+      state.reportDrafts.conferencia = freshConferenciaDraft({ unidade: report.unidade, itcNome: report.itcNome, itcCargo: report.itcCargo });
+      saveData(true);
+      renderTabs();
+      renderMain();
+    }
+  }catch(err){
+    console.warn('Falha ao gerar PDF de conferência', err);
+    toast('Não foi possível gerar o PDF — tente novamente', true);
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '⭳ Gerar PDF'; }
+  }
+}
+
 /* ---------- Protocolo de Transporte — PDF (5 páginas, reproduz o molde
    "Entrega de material biológico" fornecido pela coordenação) ----------
    Cores: verde escuro (identidade/títulos); os campos que mudam a cada
@@ -7345,7 +7830,7 @@ async function init(){
     const ok = await customConfirm('Apagar TODOS os dados salvos neste navegador (e na nuvem)? Essa ação não pode ser desfeita. As abas do menu são mantidas — só os cartões são apagados.', { confirmLabel:'Apagar tudo' });
     if(ok){
       const keepSections = (state && Array.isArray(state.sectionsConfig) && state.sectionsConfig.length) ? state.sectionsConfig : cloneDefaultSections();
-      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], projetos:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[],transporte:[],semanal:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null,transporte:null,semanal:null}, reportUiType:'utilizacao', transporteCounter:0, camaras:{lista:[],leituras:[],notas:{}}, settings:(state && state.settings) || {backupScriptUrl:'',backupScriptToken:''} };
+      state = { sectionsConfig: keepSections, sections: Object.fromEntries(keepSections.map(s => [s.id, Object.fromEntries(s.columns.map(c => [c.id, []]))])), meta:{}, retiradas:[], projetos:[], unitInfo:{}, reportSigner:{name:'',role:''}, reports:{utilizacao:[],termo:[],tempos:[],transporte:[],semanal:[],conferencia:[]}, reportDrafts:{utilizacao:null,termo:null,tempos:null,transporte:null,semanal:null,conferencia:null}, reportUiType:'utilizacao', transporteCounter:0, camaras:{lista:[],leituras:[],notas:{}}, settings:(state && state.settings) || {backupScriptUrl:'',backupScriptToken:''} };
       rebuildSectionsRuntime();
       saveData(true);
       renderTabs(); renderMain();
